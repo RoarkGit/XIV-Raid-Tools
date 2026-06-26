@@ -1,0 +1,12 @@
+{
+  "name": "xiv-raid-tools",
+  "version": "1.0.0",
+  "description": "WebSocket relay server for XIV Raid Tools session sync",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

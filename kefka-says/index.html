@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kefka Says · UMAD</title>
+<style>
+:root {
+  --bg:          #0a0a18;
+  --surface:     #13132a;
+  --border:      #252545;
+  --text:        #d0d0e8;
+  --text-dim:    #5a5a80;
+  --text-label:  #7070a0;
+  --btn-bg:      #1e1e3c;
+  --btn-hover:   #28284a;
+
+  --col-real:      #55bb77;
+  --col-fake:      #cc5555;
+  --col-water:     #44aadd;
+  --col-lightning: #ddcc44;
+  --col-accel:     #dd8833;
+  --col-inferno:   #ee6644;
+  --col-tsunami:   #4488ee;
+  --col-spread:    #dd9944;
+  --col-stack:     #5599dd;
+  --col-still:     #dd9933;
+  --col-move:      #44bbbb;
+  --col-out:       #cc66bb;
+  --col-in:        #ee88cc;
+  --col-thunder:   #ddcc44;
+  --col-blizzard:  #88ccff;
+
+  --sel-real-bg:  #152a1e;
+  --sel-fake-bg:  #2a1212;
+  --sel-water-bg: #0e1e2e;
+  --sel-light-bg: #222010;
+  --sel-accel-bg: #221808;
+  --sel-inf-bg:   #220e08;
+  --sel-tsu-bg:   #081420;
+  --sel-thr-bg:   #201e0a;
+  --sel-blz-bg:   #081422;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  min-height: 100vh;
+  padding: 32px 20px 60px;
+  font-family: system-ui, -apple-system, 'Segoe UI', Arial, sans-serif;
+  font-size: 14px;
+  color: var(--text);
+}
+
+/* ── Page ──────────────────────────────────────────────────────────────────── */
+.page { max-width: 980px; margin: 0 auto; }
+
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+.page-title    { font-size: 22px; font-weight: 700; letter-spacing: -0.3px; }
+.page-subtitle { font-size: 13px; color: var(--text-dim); margin-top: 3px; }
+
+/* ── Buttons ──────────────────────────────────────────────────────────────── */
+.btn {
+  padding: 10px 16px;
+  background: var(--btn-bg);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 13px; font-family: inherit;
+  cursor: pointer; border-radius: 6px;
+  user-select: none; white-space: nowrap;
+}
+.btn:hover:not(:disabled):not([class*="on-"]) {
+  background: var(--btn-hover); color: var(--text);
+}
+.btn:disabled { opacity: 0.25; cursor: not-allowed; }
+.btn.on-real      { background: var(--sel-real-bg);  border-color: #253a2e; color: var(--col-real); }
+.btn.on-fake      { background: var(--sel-fake-bg);  border-color: #4a1818; color: var(--col-fake); }
+.btn.on-water     { background: var(--sel-water-bg); border-color: #162636; color: var(--col-water); }
+.btn.on-lightning { background: var(--sel-light-bg); border-color: #302e10; color: var(--col-lightning); }
+.btn.on-accel     { background: var(--sel-accel-bg); border-color: #2e200e; color: var(--col-accel); }
+.btn.on-inferno   { background: var(--sel-inf-bg);   border-color: #2e1208; color: var(--col-inferno); }
+.btn.on-tsunami   { background: var(--sel-tsu-bg);   border-color: #0c1e30; color: var(--col-tsunami); }
+.btn.on-thunder   { background: var(--sel-thr-bg);   border-color: #2e2c0e; color: var(--col-thunder); }
+.btn.on-blizzard  { background: var(--sel-blz-bg);   border-color: #0e1e32; color: var(--col-blizzard); }
+
+.btn-reset {
+  padding: 8px 20px;
+  background: var(--sel-fake-bg);
+  border: 1px solid #4a1818;
+  color: var(--col-fake);
+  font-size: 14px; font-weight: 600; font-family: inherit;
+  cursor: pointer; border-radius: 6px;
+}
+.btn-reset:hover { background: #3a0e0e; color: #ff7070; border-color: #772020; }
+
+/* ── Session card ─────────────────────────────────────────────────────────── */
+.session-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-bottom: 12px;
+}
+.section-label {
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.8px;
+  color: var(--text-label);
+  margin-bottom: 10px;
+}
+.session-row { display: flex; align-items: center; gap: 8px; }
+.room-input {
+  background: var(--btn-bg); border: 1px solid var(--border);
+  color: var(--text); font-size: 13px; font-family: inherit;
+  padding: 7px 12px; border-radius: 6px; width: 110px; outline: none;
+  text-transform: uppercase; letter-spacing: 1px;
+}
+.room-input:focus { border-color: #383870; }
+.room-input::placeholder { color: var(--text-dim); text-transform: none; letter-spacing: 0; }
+.session-dot {
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--col-real); flex-shrink: 0;
+}
+.room-code {
+  color: var(--text); font-weight: 700; letter-spacing: 1.5px;
+  cursor: pointer; background: var(--btn-bg);
+  border: 1px solid var(--border);
+  padding: 4px 12px; border-radius: 6px;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.room-code:hover { background: var(--btn-hover); color: var(--col-real); border-color: #303070; }
+.room-copy-hint { font-size: 12px; font-weight: 400; letter-spacing: 0; color: var(--text-dim); margin-left: 4px; }
+.room-code:hover .room-copy-hint { color: var(--col-real); }
+.session-info { font-size: 13px; color: var(--text-dim); display: flex; align-items: center; gap: 6px; }
+
+/* ── Main card (two columns, equal height) ───────────────────────────────── */
+.main-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  display: flex;
+  align-items: stretch;
+}
+
+.col-inputs {
+  width: 380px;
+  flex-shrink: 0;
+  padding: 16px;
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+}
+.col-status {
+  flex: 1;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+/* scards-top (the 2-card grid) stays natural height; the three full-width scards share remaining space */
+.col-status > .scard { flex: 1; }
+
+/* ── Input sections ────────────────────────────────────────────────────────── */
+.input-section {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 0;
+  justify-content: center;
+}
+.input-section:first-child { padding-top: 0; }
+.input-section:last-child  { padding-bottom: 0; }
+.input-section + .input-section { border-top: 1px solid var(--border); }
+
+.input-row { display: flex; align-items: center; gap: 8px; }
+.row-label { font-size: 13px; color: var(--text-dim); width: 68px; flex-shrink: 0; }
+
+/* All buttons in input rows expand to fill equally within their group */
+.btn-group { display: flex; gap: 6px; flex: 1; }
+.btn-group .btn { flex: 1; text-align: center; padding-top: 13px; padding-bottom: 13px; }
+
+.inferred-label         { font-size: 13px; padding: 2px 0; }
+.inferred-label.inferno { color: var(--col-inferno); }
+.inferred-label.tsunami { color: var(--col-tsunami); }
+.inferred-label.unknown { color: var(--text-dim); font-style: italic; }
+
+/* ── Status cards ─────────────────────────────────────────────────────────── */
+.scards-top { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+.scard {
+  background: #0f0f24;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 12px 12px;
+  display: flex; flex-direction: column;
+  align-items: center; gap: 8px;
+  min-height: 90px; justify-content: flex-start;
+}
+.scard-label {
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.8px;
+  color: var(--text-label);
+  align-self: stretch; text-align: center; white-space: nowrap;
+}
+.scard-icon { width: 52px; height: 52px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.scard-icon svg { width: 52px; height: 52px; }
+.scard-icon.dim { opacity: 0.10; }
+.scard-val { font-size: 17px; font-weight: 700; text-align: center; line-height: 1.1; min-height: 1.4em; }
+
+.tb-inner  { display: flex; flex-direction: column; gap: 10px; width: 100%; margin-top: 4px; }
+.tb-row    { display: flex; align-items: center; gap: 10px; justify-content: center; }
+.tb-n      { font-size: 11px; color: var(--text-dim); width: 56px; text-align: right; flex-shrink: 0; }
+.tb-icon   { width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.tb-icon svg { width: 38px; height: 38px; }
+.tb-icon.dim { opacity: 0.10; }
+.tb-val    { font-size: 16px; font-weight: 700; width: 48px; min-height: 1.4em; }
+.tb-valcol { display: flex; flex-direction: column; gap: 4px; width: 120px; }
+.tb-sub    { font-size: 13px; font-weight: 600; color: var(--text); line-height: 1.2; min-height: 1.3em; }
+
+/* Value colors */
+.c-spread   { color: var(--col-spread); }
+.c-stack    { color: var(--col-stack); }
+.c-still    { color: var(--col-still); }
+.c-move     { color: var(--col-move); }
+.c-in       { color: var(--col-in); }
+.c-out      { color: var(--col-out); }
+.c-inf-real { color: var(--col-inferno); }
+.c-inf-fake { color: var(--col-inferno); }
+.c-tsu-real { color: var(--col-tsunami); }
+.c-tsu-fake { color: var(--col-tsunami); }
+.c-thr-real { color: var(--col-thunder); }
+.c-thr-fake { color: var(--col-thunder); }
+.c-blz-real { color: var(--col-blizzard); }
+.c-blz-fake { color: var(--col-blizzard); }
+.c-dim      { color: var(--text-dim); }
+
+/* ── Mobile: stack columns vertically ────────────────────────────────────── */
+@media (max-width: 720px) {
+  .main-card { flex-direction: column; }
+  .col-inputs { width: 100%; border-right: none; border-bottom: 1px solid var(--border); }
+}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="page-header">
+    <div>
+      <div class="page-title">Kefka Says</div>
+      <div class="page-subtitle">Dancing Mad (Ultimate)</div>
+    </div>
+    <button class="btn-reset" onclick="reset()">Reset</button>
+  </div>
+
+  <!-- Session -->
+  <div class="session-card">
+    <div class="section-label">Session</div>
+    <div id="sbar-idle" class="session-row">
+      <button class="btn" onclick="createSession()">Create</button>
+      <input id="room-input" class="room-input" type="text" maxlength="4" placeholder="Room code"
+             spellcheck="false" onkeydown="if(event.key==='Enter')joinSessionFromInput()">
+      <button class="btn" onclick="joinSessionFromInput()">Join</button>
+    </div>
+    <div id="sbar-active" class="session-row" style="display:none;">
+      <span class="session-dot"></span>
+      <span class="session-info">
+        Room:
+        <span class="room-code" onclick="copyRoom()">
+          <span id="room-code-val"></span><span class="room-copy-hint">· Click to copy</span>
+        </span>
+      </span>
+      <span id="copy-confirm" style="display:none;font-size:12px;color:var(--col-real);margin-left:4px;">Link copied!</span>
+      <button class="btn" onclick="leaveSession()" style="margin-left:auto;">Leave</button>
+    </div>
+  </div>
+
+  <div class="main-card">
+  <div class="col-inputs">
+
+    <!-- GCO #1 -->
+    <div class="input-section">
+      <div class="section-label">Grand Cross Omega #1</div>
+      <div class="input-row">
+        <div class="row-label">Cast</div>
+        <div class="btn-group">
+          <button class="btn" id="g1r" onclick="set('g1rf','real')">Real</button>
+          <button class="btn" id="g1f" onclick="set('g1rf','fake')">Fake</button>
+        </div>
+      </div>
+      <div class="input-row">
+        <div class="row-label">Debuffs</div>
+        <div class="btn-group">
+          <button class="btn" id="g1wa" onclick="setPos(1,'water')">Water</button>
+          <button class="btn" id="g1li" onclick="setPos(1,'lightning')">Lightning</button>
+          <button class="btn" id="g1ac" onclick="togAccel(1)">Accel Bomb</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Floor AOE #1 -->
+    <div class="input-section">
+      <div class="section-label">Floor AOE #1</div>
+      <div class="input-row">
+        <div class="row-label">Type</div>
+        <div class="btn-group">
+          <button class="btn" id="t1i" onclick="set('it1type','inferno')">Inferno</button>
+          <button class="btn" id="t1t" onclick="set('it1type','tsunami')">Tsunami</button>
+        </div>
+      </div>
+      <div class="input-row">
+        <div class="row-label">Cast</div>
+        <div class="btn-group">
+          <button class="btn" id="i1r" onclick="set('it1rf','real')">Real</button>
+          <button class="btn" id="i1f" onclick="set('it1rf','fake')">Fake</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- GCO #2 -->
+    <div class="input-section">
+      <div class="section-label">Grand Cross Omega #2</div>
+      <div class="input-row">
+        <div class="row-label">Cast</div>
+        <div class="btn-group">
+          <button class="btn" id="g2r" onclick="set('g2rf','real')">Real</button>
+          <button class="btn" id="g2f" onclick="set('g2rf','fake')">Fake</button>
+        </div>
+      </div>
+      <div class="input-row">
+        <div class="row-label">Debuffs</div>
+        <div class="btn-group">
+          <button class="btn" id="g2wa" onclick="setPos(2,'water')">Water</button>
+          <button class="btn" id="g2li" onclick="setPos(2,'lightning')">Lightning</button>
+          <button class="btn" id="g2ac" onclick="togAccel(2)">Accel Bomb</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Floor AOE #2 -->
+    <div class="input-section">
+      <div class="section-label">Floor AOE #2</div>
+      <div class="input-row">
+        <div class="row-label">Type</div>
+        <span class="inferred-label unknown" id="it2-badge">set type above</span>
+      </div>
+      <div class="input-row">
+        <div class="row-label">Cast</div>
+        <div class="btn-group">
+          <button class="btn" id="i2r" onclick="set('it2rf','real')">Real</button>
+          <button class="btn" id="i2f" onclick="set('it2rf','fake')">Fake</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Thunder & Blizzard -->
+    <div class="input-section">
+      <div class="section-label">Thunder & Blizzard</div>
+      <div class="input-row">
+        <div class="row-label">Thunder</div>
+        <div class="btn-group">
+          <button class="btn" id="thr" onclick="set('thunderRF','real')">Real</button>
+          <button class="btn" id="thf" onclick="set('thunderRF','fake')">Fake</button>
+        </div>
+      </div>
+      <div class="input-row">
+        <div class="row-label">Blizzard</div>
+        <div class="btn-group">
+          <button class="btn" id="blr" onclick="set('blizzardRF','real')">Real</button>
+          <button class="btn" id="blf" onclick="set('blizzardRF','fake')">Fake</button>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /.col-inputs -->
+  <div class="col-status">
+
+    <div class="section-label">My Status</div>
+
+    <!-- Position & Accel Bomb -->
+    <div class="scards-top">
+      <div class="scard" id="card-pos">
+        <div class="scard-label">Position</div>
+        <div class="scard-icon dim" id="si-pos"></div>
+        <div class="scard-val c-dim" id="sv-pos"></div>
+      </div>
+      <div class="scard">
+        <div class="scard-label">Accel Bomb</div>
+        <div class="scard-icon dim" id="si-accel"></div>
+        <div class="scard-val c-dim" id="sv-accel"></div>
+      </div>
+    </div>
+
+    <!-- Gaze -->
+    <div class="scard">
+      <div class="scard-label">Gaze</div>
+      <div class="tb-inner">
+        <div class="tb-row">
+          <span class="tb-n">1st GCO</span>
+          <div class="tb-icon dim" id="gi-gz1"></div>
+          <span class="tb-val c-dim" id="gv-gz1"></span>
+        </div>
+        <div class="tb-row">
+          <span class="tb-n">2nd GCO</span>
+          <div class="tb-icon dim" id="gi-gz2"></div>
+          <span class="tb-val c-dim" id="gv-gz2"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Floor AOE -->
+    <div class="scard">
+      <div class="scard-label">Floor AOE</div>
+      <div class="tb-inner">
+        <div class="tb-row">
+          <span class="tb-n">Inferno</span>
+          <div class="tb-icon dim" id="si-inf"></div>
+          <div class="tb-valcol">
+            <span class="tb-val c-dim" id="sv-inf"></span>
+            <span class="tb-sub" id="ss-inf"></span>
+          </div>
+        </div>
+        <div class="tb-row">
+          <span class="tb-n">Tsunami</span>
+          <div class="tb-icon dim" id="si-tsu"></div>
+          <div class="tb-valcol">
+            <span class="tb-val c-dim" id="sv-tsu"></span>
+            <span class="tb-sub" id="ss-tsu"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Thunder & Blizzard -->
+    <div class="scard">
+      <div class="scard-label">Thunder & Blizzard</div>
+      <div class="tb-inner">
+        <div class="tb-row">
+          <span class="tb-n">Thunder</span>
+          <div class="tb-icon dim" id="si-thr"></div>
+          <span class="tb-val c-dim" id="sv-thr"></span>
+        </div>
+        <div class="tb-row">
+          <span class="tb-n">Blizzard</span>
+          <div class="tb-icon dim" id="si-blz"></div>
+          <span class="tb-val c-dim" id="sv-blz"></span>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /.col-status -->
+  </div><!-- /.main-card -->
+</div>
+<script src="icons.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
