@@ -211,7 +211,7 @@ const SYNC_KEYS = ['g1rf', 'g2rf', 'it1type', 'it1rf', 'it2rf', 'thunderRF', 'bl
 // TODO: after Railway deploy, replace the production URL with your actual deployment URL
 const WS_URL = (!location.hostname || location.hostname === 'localhost' || location.hostname === '127.0.0.1')
   ? 'ws://localhost:3000'
-  : 'wss://TODO.railway.app';
+  : 'wss://xiv-raid-tools-production.up.railway.app';
 
 function sharedState() {
   const out = {};
