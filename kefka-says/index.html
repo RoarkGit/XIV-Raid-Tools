@@ -80,7 +80,7 @@ body {
 .btn:hover:not(:disabled):not([class*="on-"]) {
   background: var(--btn-hover); color: var(--text);
 }
-.btn:disabled { opacity: 0.25; cursor: not-allowed; }
+.btn:disabled { opacity: 0.25; cursor: not-allowed; pointer-events: none; }
 .btn.on-real      { background: var(--sel-real-bg);  border-color: #253a2e; color: var(--col-real); }
 .btn.on-fake      { background: var(--sel-fake-bg);  border-color: #4a1818; color: var(--col-fake); }
 .btn.on-water     { background: var(--sel-water-bg); border-color: #162636; color: var(--col-water); }
@@ -139,6 +139,14 @@ body {
 .room-copy-hint { font-size: 12px; font-weight: 400; letter-spacing: 0; color: var(--text-dim); margin-left: 4px; }
 .room-code:hover .room-copy-hint { color: var(--col-real); }
 .session-info { font-size: 13px; color: var(--text-dim); display: flex; align-items: center; gap: 6px; }
+.option-row {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 12px; padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 13px; color: var(--text-dim);
+  cursor: pointer; user-select: none;
+}
+.option-row input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--col-real); cursor: pointer; }
 
 /* ── Main card (two columns, equal height) ───────────────────────────────── */
 .main-card {
@@ -184,13 +192,30 @@ body {
 .row-label { font-size: 13px; color: var(--text-dim); width: 68px; flex-shrink: 0; }
 
 /* All buttons in input rows expand to fill equally within their group */
-.btn-group { display: flex; gap: 6px; flex: 1; }
+.btn-group { display: flex; gap: 6px; flex: 1; position: relative; }
 .btn-group .btn { flex: 1; text-align: center; padding: 13px 8px; }
 
-.inferred-label         { font-size: 13px; padding: 2px 0; }
-.inferred-label.inferno { color: var(--col-inferno); }
-.inferred-label.tsunami { color: var(--col-tsunami); }
-.inferred-label.unknown { color: var(--text-dim); font-style: italic; }
+.btn-group[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 7px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+  z-index: 30;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+}
+.btn-group[data-tip]:hover::after { opacity: 1; visibility: visible; }
 
 /* ── Status cards ─────────────────────────────────────────────────────────── */
 .scards-top { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -280,6 +305,10 @@ body {
       <span id="copy-confirm" style="display:none;font-size:12px;color:var(--col-real);margin-left:4px;">Link copied!</span>
       <button class="btn" onclick="leaveSession()" style="margin-left:auto;">Leave</button>
     </div>
+    <label class="option-row">
+      <input type="checkbox" id="enforce-order-cb" onchange="toggleEnforceOrder()">
+      Enforce mechanic order (require #1 before #2 can be set)
+    </label>
   </div>
 
   <div class="main-card">
@@ -329,14 +358,14 @@ body {
       <div class="section-label">Grand Cross Omega #2</div>
       <div class="input-row">
         <div class="row-label">Cast</div>
-        <div class="btn-group">
+        <div class="btn-group" id="g2rf-group">
           <button class="btn" id="g2r" onclick="set('g2rf','real')">Real</button>
           <button class="btn" id="g2f" onclick="set('g2rf','fake')">Fake</button>
         </div>
       </div>
       <div class="input-row">
         <div class="row-label">Debuffs</div>
-        <div class="btn-group">
+        <div class="btn-group" id="g2pos-group">
           <button class="btn" id="g2wa" onclick="setPos(2,'water')">Water</button>
           <button class="btn" id="g2li" onclick="setPos(2,'lightning')">Lightning</button>
           <button class="btn" id="g2ac" onclick="togAccel(2)">Accel Bomb</button>
@@ -349,11 +378,14 @@ body {
       <div class="section-label">Floor AOE #2</div>
       <div class="input-row">
         <div class="row-label">Type</div>
-        <span class="inferred-label unknown" id="it2-badge">set type above</span>
+        <div class="btn-group" id="t2type-group">
+          <button class="btn" id="t2i" disabled>Inferno</button>
+          <button class="btn" id="t2t" disabled>Tsunami</button>
+        </div>
       </div>
       <div class="input-row">
         <div class="row-label">Cast</div>
-        <div class="btn-group">
+        <div class="btn-group" id="i2rf-group">
           <button class="btn" id="i2r" onclick="set('it2rf','real')">Real</button>
           <button class="btn" id="i2f" onclick="set('it2rf','fake')">Fake</button>
         </div>

@@ -5,21 +5,30 @@ const S = {
   g2rf: null, g2pos: null, g2accel: false,
   it2rf: null,
   thunderRF: null, blizzardRF: null,
+  enforceOrder: false,
 };
 
 function tog(k)    { S[k] = !S[k]; render(); }
 function set(k, v) { S[k] = S[k] === v ? null : v; render(); }
 function exc(k, v) { S[k] = S[k] === v ? null : v; render(); }
-function reset()   { for (const k of Object.keys(S)) S[k] = k.endsWith('accel') ? false : null; render(); }
+function reset()   { for (const k of Object.keys(S)) { if (k !== 'enforceOrder') S[k] = k.endsWith('accel') ? false : null; } render(); }
+
+function toggleEnforceOrder() {
+  S.enforceOrder = document.getElementById('enforce-order-cb').checked;
+  render();
+}
 
 function setPos(gco, v) {
+  const other = gco === 1 ? 2 : 1;
   const posKey     = `g${gco}pos`;
   const sameAccel  = `g${gco}accel`;
-  const otherAccel = `g${gco === 1 ? 2 : 1}accel`;
+  const otherAccel = `g${other}accel`;
+  const otherPos   = `g${other}pos`;
   S[posKey] = S[posKey] === v ? null : v;
   if (S[posKey]) {
     S[sameAccel]  = false;
     S[otherAccel] = true;
+    S[otherPos]   = null;
   }
   render();
 }
@@ -64,6 +73,12 @@ function floorAoe(type, rf) {
 }
 
 // ── Render helpers ─────────────────────────────────────────────────────────
+function hint(id, cond, text) {
+  const el = document.getElementById(id);
+  if (cond) el.setAttribute('data-tip', text);
+  else el.removeAttribute('data-tip');
+}
+
 function btnCls(id, on, key) {
   document.getElementById(id).className = 'btn' + (on ? ` on-${key}` : '');
 }
@@ -149,14 +164,32 @@ function render() {
   btnCls('blr',  S.blizzardRF === 'real', 'blizzard');
   btnCls('blf',  S.blizzardRF === 'fake', 'fake');
 
-  document.getElementById('g2wa').disabled = S.g2accel;
-  document.getElementById('g2li').disabled = S.g2accel;
-  document.getElementById('g2ac').disabled = !!S.g2pos || S.g1accel;
+  document.getElementById('enforce-order-cb').checked = S.enforceOrder;
+
+  const g1Done  = !!(S.g1pos || S.g1accel);
+  const g1Order = S.enforceOrder && !S.g1rf;
+  const g1PosOrder = S.enforceOrder && !g1Done;
+  document.getElementById('g2r').disabled  = g1Order;
+  document.getElementById('g2f').disabled  = g1Order;
+  document.getElementById('g2wa').disabled = S.g2accel || g1PosOrder;
+  document.getElementById('g2li').disabled = S.g2accel || g1PosOrder;
+  document.getElementById('g2ac').disabled = !!S.g2pos || S.g1accel || g1PosOrder;
+
+  // Titled on the wrapping .btn-group, not the buttons themselves —
+  // disabled buttons don't fire hover events in most browsers, so a
+  // title on a disabled <button> never shows a tooltip.
+  hint('g2rf-group',  g1Order,     'Set Grand Cross Omega #1 Cast first');
+  hint('g2pos-group', g1PosOrder, 'Set Grand Cross Omega #1 Debuffs first');
 
   const t2 = it2type();
-  const badge = document.getElementById('it2-badge');
-  badge.className = 'inferred-label ' + (t2 || 'unknown');
-  badge.textContent = t2 ? t2[0].toUpperCase() + t2.slice(1) : 'set type above';
+  btnCls('t2i', t2 === 'inferno', 'inferno');
+  btnCls('t2t', t2 === 'tsunami', 'tsunami');
+  hint('t2type-group', true, 'Automatically set from Floor AOE #1 type');
+
+  const it1Order = S.enforceOrder && !t2;
+  document.getElementById('i2r').disabled = it1Order;
+  document.getElementById('i2f').disabled = it1Order;
+  hint('i2rf-group', it1Order, 'Set Floor AOE #1 Type first');
 
   // Position
   const spread = calcSpread();
@@ -206,7 +239,7 @@ function render() {
 
 // ── Session (WebSocket) ────────────────────────────────────────────────────
 // Mechanic-wide fields only; player-specific debuffs (g1/g2 pos/accel) stay local
-const SYNC_KEYS = ['g1rf', 'g2rf', 'it1type', 'it1rf', 'it2rf', 'thunderRF', 'blizzardRF'];
+const SYNC_KEYS = ['g1rf', 'g2rf', 'it1type', 'it1rf', 'it2rf', 'thunderRF', 'blizzardRF', 'enforceOrder'];
 
 // TODO: after Railway deploy, replace the production URL with your actual deployment URL
 const WS_URL = (!location.hostname || location.hostname === 'localhost' || location.hostname === '127.0.0.1')
