@@ -22,6 +22,17 @@ same WebSocket relay (`server/index.js`).
 - Deliberately does not read any game state (party list, duty, casts). It's
   a synced display, same scope as the webapp, just in an ImGui window.
 
+## Installing (custom plugin repository)
+
+This repo hosts its own [`pluginmaster.json`](../pluginmaster.json), the
+standard way small/personal plugins are distributed outside the official
+Dalamud plugin listing:
+
+1. In-game, open the Plugin Installer, go to Settings → Experimental →
+   Custom Plugin Repositories.
+2. Add: `https://raw.githubusercontent.com/RoarkGit/XIV-Raid-Tools/main/pluginmaster.json`
+3. Save, then find "XIV Raid Tools" under All Plugins and install it.
+
 ## Building
 
 Requires XIVLauncher's Dalamud dev environment:
@@ -35,6 +46,26 @@ dotnet build
 The build produces `bin/Debug/XIVRaidToolsPlugin.json` alongside the DLL
 (via DalamudPackager), which is what the in-game Dev Plugin Location points
 at for local testing.
+
+## Releasing
+
+Pushing a version tag triggers `.github/workflows/release-plugin.yml`,
+which builds in Release configuration (producing a `latest.zip` via
+DalamudPackager), creates a GitHub Release with that zip attached, and
+commits an updated `pluginmaster.json` (new `AssemblyVersion`, new download
+links) back to `main`. No manual csproj editing needed, the tag itself is
+the version:
+
+```
+git tag v0.2.0.0
+git push origin v0.2.0.0
+```
+
+The tag (minus the leading `v`) becomes `AssemblyVersion`, which is what
+the installer compares to decide an update is available, so every release
+needs a new, higher tag. The workflow needs Actions to have "Read and
+write permissions" under this repo's Settings → Actions → General →
+Workflow permissions, since it commits `pluginmaster.json` back to `main`.
 
 ## Commands
 

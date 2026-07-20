@@ -13,6 +13,7 @@
     <Author>RoarkGit</Author>
     <Description>A growing set of in-game raid tools, starting with Kefka Says, an in-game mirror of the Kefka Says / UMAD room tracker, synced with the webapp over the same WebSocket relay. Open with /xrt kefka.</Description>
     <Punchline>Kefka Says tracker and more, in an ImGui window.</Punchline>
+    <RepoUrl>https://github.com/RoarkGit/XIV-Raid-Tools</RepoUrl>
     <Tags>raid;ultimate;tracker;utility;kefka</Tags>
     <AssemblyVersion>0.1.0.0</AssemblyVersion>
     <Version>0.1.0.0</Version>

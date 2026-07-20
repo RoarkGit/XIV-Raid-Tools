@@ -1,0 +1,93 @@
+name: Release Plugin
+
+# Triggered by pushing a version tag, e.g.:
+#   git tag v0.2.0.0 && git push origin v0.2.0.0
+# The tag (minus the leading "v") becomes AssemblyVersion, which is what
+# Dalamud's installer compares to decide an update is available — so every
+# release needs a new tag, there's no auto-bumping here.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write # create the GitHub Release, commit pluginmaster.json back to main
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version from tag
+        id: ver
+        shell: bash
+        run: |
+          tag="${{ github.ref_name }}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Install .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Download Dalamud
+        shell: pwsh
+        run: |
+          Invoke-WebRequest -Uri https://goatcorp.github.io/dalamud-distrib/latest.zip -OutFile dalamud-latest.zip
+          Expand-Archive -Force dalamud-latest.zip "$env:RUNNER_TEMP\dalamud"
+          echo "DALAMUD_HOME=$env:RUNNER_TEMP\dalamud" >> $env:GITHUB_ENV
+
+      - name: Build
+        shell: bash
+        run: >
+          dotnet build XIVRaidToolsPlugin/XIVRaidToolsPlugin.csproj
+          -c Release
+          -p:AssemblyVersion=${{ steps.ver.outputs.version }}
+          -p:Version=${{ steps.ver.outputs.version }}
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: ${{ steps.ver.outputs.tag }}
+          files: XIVRaidToolsPlugin/bin/Release/XIVRaidToolsPlugin/latest.zip
+          fail_on_unmatched_files: true
+
+      # The tag checkout above leaves the workspace in a detached HEAD, so
+      # committing pluginmaster.json needs its own explicit switch to main
+      # rather than pushing from wherever the tag happens to point.
+      - name: Update pluginmaster.json on main
+        shell: bash
+        run: |
+          git fetch origin main
+          git checkout -B main origin/main
+
+          python3 - <<EOF
+          import json, time
+
+          with open("pluginmaster.json") as f:
+              data = json.load(f)
+
+          entry = data[0]
+          entry["AssemblyVersion"] = "${{ steps.ver.outputs.version }}"
+          entry["LastUpdate"] = int(time.time())
+          url = "https://github.com/${{ github.repository }}/releases/download/${{ steps.ver.outputs.tag }}/latest.zip"
+          entry["DownloadLinkInstall"] = url
+          entry["DownloadLinkUpdate"] = url
+
+          with open("pluginmaster.json", "w") as f:
+              json.dump(data, f, indent=2)
+              f.write("\n")
+          EOF
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add pluginmaster.json
+          git commit -m "Update pluginmaster.json for ${{ steps.ver.outputs.tag }}"
+          git push origin main
