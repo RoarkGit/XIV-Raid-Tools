@@ -111,6 +111,37 @@ body.icon-mode .btn[data-icon] .btn-icon { display: flex; align-items: center; j
 }
 .btn-reset:hover { background: #3a0e0e; color: #ff7070; border-color: #772020; }
 
+.header-actions { display: flex; align-items: center; gap: 8px; }
+.history-wrap { position: relative; }
+
+/* Reset() snapshots the pre-clear state here (see reset()/renderHistory()
+   in app.js) so a misclick, or an earlier pull's calls, can be recovered. */
+.history-panel {
+  position: absolute; top: calc(100% + 8px); right: 0;
+  width: 320px; max-height: 340px; overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.5); z-index: 40;
+}
+.history-panel-header {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;
+}
+.history-panel-title {
+  font-size: 11px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase;
+  color: var(--text-label);
+}
+.history-clear-btn {
+  background: none; border: none; padding: 0; font-size: 12px; font-family: inherit;
+  color: var(--col-fake); cursor: pointer;
+}
+.history-clear-btn:hover { color: #ff7070; }
+.history-clear-btn:disabled { color: var(--text-dim); cursor: not-allowed; }
+.history-empty { font-size: 13px; color: var(--text-dim); }
+.history-entry { padding: 8px 0; border-top: 1px solid var(--border); }
+.history-entry:first-child { border-top: none; padding-top: 0; }
+.history-time { font-size: 12px; color: var(--text-dim); }
+.history-desc { font-size: 13px; color: var(--text); margin: 4px 0 6px; }
+.history-restore-btn { font-size: 12px; padding: 4px 10px; }
+
 /* ── Session card ─────────────────────────────────────────────────────────── */
 .session-card {
   background: var(--surface);
@@ -299,7 +330,19 @@ body.icon-mode .btn[data-icon] .btn-icon { display: flex; align-items: center; j
       <div class="page-title">Kefka Says</div>
       <div class="page-subtitle">Dancing Mad (Ultimate)</div>
     </div>
-    <button class="btn-reset" onclick="reset()">Reset</button>
+    <div class="header-actions">
+      <div class="history-wrap" id="history-wrap">
+        <button class="btn" onclick="toggleHistoryPanel()">History (<span id="history-count">0</span>)</button>
+        <div id="history-panel" class="history-panel" style="display:none;">
+          <div class="history-panel-header">
+            <div class="history-panel-title">Pull History</div>
+            <button id="history-clear-btn" class="history-clear-btn" onclick="clearHistory()" disabled>Clear</button>
+          </div>
+          <div id="history-list"></div>
+        </div>
+      </div>
+      <button class="btn-reset" onclick="reset()">Reset</button>
+    </div>
   </div>
 
   <!-- Session -->

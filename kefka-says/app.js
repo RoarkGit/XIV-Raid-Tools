@@ -19,8 +19,105 @@ function exc(k, v) { S[k] = S[k] === v ? null : v; render(); }
 const PERSONAL_KEYS = ['g1pos', 'g2pos', 'g1accel', 'g2accel'];
 function clearLocalDebuffs() { for (const k of PERSONAL_KEYS) S[k] = k.endsWith('accel') ? false : null; }
 
+// ── Pull history ─────────────────────────────────────────────────────────
+// reset() snapshots the state it's about to clear so a misclick (or just
+// wanting to see an earlier pull's calls) can be recovered — but only when
+// there was actually something to lose, so spamming Reset on an already-
+// clear state doesn't fill this with blank entries. Local per browser (like
+// the personal debuff fields), not synced to the room.
+const PULL_HISTORY_MAX = 20;
+const HISTORY_KEYS = Object.keys(S).filter(k => k !== 'enforceOrder');
+let pullHistory = []; // most recent first
+
+function isStateEmpty() {
+  return HISTORY_KEYS.every(k => S[k] === (k.endsWith('accel') ? false : null));
+}
+
+function snapshotState() {
+  const snap = { timestamp: Date.now() };
+  for (const k of HISTORY_KEYS) snap[k] = S[k];
+  return snap;
+}
+
+function describeSnapshot(snap) {
+  const parts = [];
+  const addGco = (n, rf, pos, accel) => {
+    if (!rf && !pos && !accel) return;
+    const bits = [];
+    if (rf) bits.push(rf);
+    if (pos) bits.push(pos);
+    if (accel) bits.push('accel');
+    parts.push(`GCO${n}: ${bits.join(' ')}`);
+  };
+  addGco(1, snap.g1rf, snap.g1pos, snap.g1accel);
+  addGco(2, snap.g2rf, snap.g2pos, snap.g2accel);
+  if (snap.it1type || snap.it1rf) parts.push(`Floor: ${snap.it1type || ''} ${snap.it1rf || ''}`.trim());
+  if (snap.thunderRF) parts.push(`Thunder: ${snap.thunderRF}`);
+  if (snap.blizzardRF) parts.push(`Blizzard: ${snap.blizzardRF}`);
+  return parts.length ? parts.join(' | ') : '(empty)';
+}
+
+function restoreSnapshot(index) {
+  const snap = pullHistory[index];
+  if (!snap) return;
+  for (const k of HISTORY_KEYS) S[k] = snap[k];
+  closeHistoryPanel();
+  render();
+}
+
+function updateHistoryBadge() {
+  const el = document.getElementById('history-count');
+  if (el) el.textContent = pullHistory.length;
+}
+
+function clearHistory() {
+  pullHistory = [];
+  renderHistory();
+}
+
+function renderHistory() {
+  updateHistoryBadge();
+  const clearBtn = document.getElementById('history-clear-btn');
+  if (clearBtn) clearBtn.disabled = pullHistory.length === 0;
+  const list = document.getElementById('history-list');
+  if (pullHistory.length === 0) {
+    list.innerHTML = '<div class="history-empty">No saved pulls yet.</div>';
+    return;
+  }
+  list.innerHTML = pullHistory.map((snap, i) => {
+    const time = new Date(snap.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return `
+      <div class="history-entry">
+        <div class="history-time">${time}</div>
+        <div class="history-desc">${describeSnapshot(snap)}</div>
+        <button class="btn history-restore-btn" onclick="restoreSnapshot(${i})">Restore</button>
+      </div>`;
+  }).join('');
+}
+
+function toggleHistoryPanel() {
+  const panel = document.getElementById('history-panel');
+  const opening = panel.style.display === 'none';
+  panel.style.display = opening ? 'block' : 'none';
+  if (opening) renderHistory();
+}
+
+function closeHistoryPanel() {
+  document.getElementById('history-panel').style.display = 'none';
+}
+
+document.addEventListener('click', (e) => {
+  const wrap = document.getElementById('history-wrap');
+  if (wrap && !wrap.contains(e.target)) closeHistoryPanel();
+});
+
 let _pendingClearDebuffs = false;
 function reset() {
+  if (!isStateEmpty()) {
+    pullHistory.unshift(snapshotState());
+    if (pullHistory.length > PULL_HISTORY_MAX) pullHistory.length = PULL_HISTORY_MAX;
+    updateHistoryBadge();
+  }
   for (const k of Object.keys(S)) { if (k !== 'enforceOrder') S[k] = k.endsWith('accel') ? false : null; }
   _pendingClearDebuffs = true;
   render();
