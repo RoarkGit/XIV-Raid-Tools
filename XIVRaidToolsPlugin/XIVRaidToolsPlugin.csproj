@@ -1,0 +1,26 @@
+<Project Sdk="Dalamud.NET.Sdk/14.0.1">
+
+  <PropertyGroup>
+    <RootNamespace>XIVRaidToolsPlugin</RootNamespace>
+    <AssemblyName>XIVRaidToolsPlugin</AssemblyName>
+  </PropertyGroup>
+
+  <!-- Consumed by DalamudPackager (see Sdk.props's Use_DalamudPackager) to
+       generate the plugin manifest JSON alongside the built DLL. -->
+  <PropertyGroup>
+    <Name>XIV Raid Tools</Name>
+    <InternalName>XIVRaidToolsPlugin</InternalName>
+    <Author>RoarkGit</Author>
+    <Description>A growing set of in-game raid tools, starting with Kefka Says, an in-game mirror of the Kefka Says / UMAD room tracker, synced with the webapp over the same WebSocket relay. Open with /xrt kefka.</Description>
+    <Punchline>Kefka Says tracker and more, in an ImGui window.</Punchline>
+    <Tags>raid;ultimate;tracker;utility;kefka</Tags>
+    <AssemblyVersion>0.1.0.0</AssemblyVersion>
+    <Version>0.1.0.0</Version>
+    <!-- DalamudPackager 14.0.1 defaults this to 14, but the installed
+         Dalamud (15.0.2.3) is on API level 15, confirmed against the
+         manifests of already-loaded plugins (NoClippy, MarketBoardPlugin)
+         in ~/.xlcore/installedPlugins, both DalamudApiLevel: 15. -->
+    <DalamudApiLevel>15</DalamudApiLevel>
+  </PropertyGroup>
+
+</Project>
