@@ -3,7 +3,7 @@ name: Release Plugin
 # Triggered by pushing a version tag, e.g.:
 #   git tag v0.2.0.0 && git push origin v0.2.0.0
 # The tag (minus the leading "v") becomes AssemblyVersion, which is what
-# Dalamud's installer compares to decide an update is available — so every
+# Dalamud's installer compares to decide an update is available, so every
 # release needs a new tag, there's no auto-bumping here.
 on:
   push:
@@ -68,6 +68,15 @@ jobs:
           git fetch origin main
           git checkout -B main origin/main
 
+          # Read AssemblyVersion back from the manifest DalamudPackager just
+          # generated, rather than re-deriving it from the tag string. A
+          # 3-part tag like "0.1.0" builds fine but MSBuild/the packager
+          # normalizes it to 4 parts ("0.1.0.0") in the actual shipped
+          # manifest, and System.Version("0.1.0") != System.Version("0.1.0.0")
+          # (confirmed: .Equals() is false), so pluginmaster.json has to
+          # match what's really in the zip, not what the tag literally said.
+          built_version=$(python3 -c "import json; print(json.load(open('XIVRaidToolsPlugin/bin/Release/XIVRaidToolsPlugin/XIVRaidToolsPlugin.json'))['AssemblyVersion'])")
+
           python3 - <<EOF
           import json, time
 
@@ -75,7 +84,7 @@ jobs:
               data = json.load(f)
 
           entry = data[0]
-          entry["AssemblyVersion"] = "${{ steps.ver.outputs.version }}"
+          entry["AssemblyVersion"] = "$built_version"
           entry["LastUpdate"] = int(time.time())
           url = "https://github.com/${{ github.repository }}/releases/download/${{ steps.ver.outputs.tag }}/latest.zip"
           entry["DownloadLinkInstall"] = url
