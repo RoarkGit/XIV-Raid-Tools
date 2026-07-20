@@ -332,6 +332,78 @@ function renderSession() {
   if (P.sessionId) document.getElementById('room-code-val').textContent = P.sessionId;
 }
 
+// ── Icon mode ────────────────────────────────────────────────────────────
+// A personal display preference, not a raid-shared fact like enforceOrder —
+// stored in localStorage per-browser rather than synced via SYNC_KEYS, so
+// one person turning it on doesn't change what anyone else sees.
+const ICON_MODE_KEY = 'kefkaIconMode';
+
+// Real/Fake have no in-game equivalent (they're not a game concept, just
+// this tracker's own UI), so those stay hand-drawn vector glyphs.
+const BTN_VECTOR_ICON = {
+  g1r: 'check', g1f: 'cross', g2r: 'check', g2f: 'cross',
+  i1r: 'check', i1f: 'cross', i2r: 'check', i2f: 'cross',
+  thr: 'check', thf: 'cross', blr: 'check', blf: 'cross',
+};
+
+// Water/Lightning/Accel Bomb/Inferno/Tsunami DO have real debuffs behind
+// them (Compressed Water / Forked Lightning / Acceleration Bomb / Entropy /
+// Dynamic Fluid), so these show the actual game icon instead of a
+// hand-drawn approximation — same real-name-lookup principle as the
+// Dalamud plugin's GameIcons.cs, just resolved once here (via XIVAPI v2's
+// search, verified during development) rather than at runtime against local
+// game data, since a browser has no access to that.
+const GAME_ICON_PATH = {
+  compressedWater: 'ui/icon/215000/215696.tex',
+  forkedLightning: 'ui/icon/215000/215623.tex',
+  accelerationBomb: 'ui/icon/215000/215727.tex',
+  entropy: 'ui/icon/215000/215902.tex',
+  dynamicFluid: 'ui/icon/215000/215903.tex',
+};
+const BTN_GAME_ICON = {
+  g1wa: GAME_ICON_PATH.compressedWater, g2wa: GAME_ICON_PATH.compressedWater,
+  g1li: GAME_ICON_PATH.forkedLightning, g2li: GAME_ICON_PATH.forkedLightning,
+  g1ac: GAME_ICON_PATH.accelerationBomb, g2ac: GAME_ICON_PATH.accelerationBomb,
+  t1i: GAME_ICON_PATH.entropy, t2i: GAME_ICON_PATH.entropy,
+  t1t: GAME_ICON_PATH.dynamicFluid, t2t: GAME_ICON_PATH.dynamicFluid,
+};
+
+// A plain <img> (not fetch/XHR) needs no CORS headers to render cross-origin,
+// so this works regardless of XIVAPI's CORS policy.
+function gameIconUrl(path) {
+  return `https://v2.xivapi.com/api/asset?path=${encodeURIComponent(path)}&format=png`;
+}
+
+// Wraps each mapped button's existing text in a span alongside an injected
+// icon span, once at load — render() never touches these buttons'
+// text/innerHTML afterward (only className/style), so this is safe to do
+// exactly once rather than on every render().
+function initIconButtons() {
+  for (const [id, key] of Object.entries(BTN_VECTOR_ICON)) {
+    const btn = document.getElementById(id);
+    if (!btn) continue;
+    const text = btn.textContent;
+    btn.dataset.icon = 'vector';
+    btn.innerHTML = `<span class="btn-text">${text}</span><span class="btn-icon">${IC[key]}</span>`;
+  }
+  for (const [id, path] of Object.entries(BTN_GAME_ICON)) {
+    const btn = document.getElementById(id);
+    if (!btn) continue;
+    const text = btn.textContent;
+    btn.dataset.icon = 'game';
+    btn.innerHTML = `<span class="btn-text">${text}</span><span class="btn-icon"><img src="${gameIconUrl(path)}" alt="${text}" loading="lazy"></span>`;
+  }
+}
+
+function setIconMode(on) {
+  document.body.classList.toggle('icon-mode', on);
+  localStorage.setItem(ICON_MODE_KEY, on ? '1' : '0');
+}
+
+function toggleIconMode() {
+  setIconMode(document.getElementById('icon-mode-cb').checked);
+}
+
 // ── Init ───────────────────────────────────────────────────────────────────
 function initPlaceholders() {
   function ph(id, svg) { const el = document.getElementById(id); el.innerHTML = svg; el.dataset.ph = svg; }
@@ -346,7 +418,12 @@ function initPlaceholders() {
 }
 
 initPlaceholders();
+initIconButtons();
 render();
+
+const _iconModeOn = localStorage.getItem(ICON_MODE_KEY) === '1';
+document.getElementById('icon-mode-cb').checked = _iconModeOn;
+setIconMode(_iconModeOn);
 
 // Auto-join if URL contains ?room=XXXX, then clear param so refresh starts fresh
 const _roomParam = new URLSearchParams(location.search).get('room');

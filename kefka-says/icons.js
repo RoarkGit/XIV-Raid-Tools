@@ -78,4 +78,38 @@ const IC = {
     </g>
     <line x1="6" y1="6" x2="38" y2="38" stroke="#cc5555" stroke-width="3.5" stroke-linecap="round"/>
   </svg>`,
+
+  // Icon-mode button glyphs (not derived-status icons like the above — these
+  // replace the plain "Real"/"Fake"/"Water"/etc. button text). Ported from
+  // the Dalamud plugin's Icons.cs; unlike ImGui's draw list, SVG doesn't
+  // double-blend overlapping opaque shapes, so the plugin's "seam" concerns
+  // don't apply here — the multi-shape constructions (droplet, flame) are
+  // safe as-is.
+  check: `<svg viewBox="0 0 44 44" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="8,24 18,34 37,10"/>
+  </svg>`,
+
+  cross: `<svg viewBox="0 0 44 44" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round">
+    <line x1="10" y1="10" x2="34" y2="34"/>
+    <line x1="34" y1="10" x2="10" y2="34"/>
+  </svg>`,
+
+  droplet: `<svg viewBox="0 0 44 44" fill="currentColor">
+    <path d="M22,4 L9,27 A13,13 0 1 0 35,27 Z"/>
+  </svg>`,
+
+  bomb: `<svg viewBox="0 0 44 44">
+    <line x1="28" y1="14" x2="34" y2="6" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="35" cy="5" r="3" fill="currentColor"/>
+    <circle cx="20" cy="27" r="14" fill="currentColor"/>
+  </svg>`,
+
+  flame: `<svg viewBox="0 0 44 44" fill="currentColor">
+    <polygon points="27,3 8,29 34,24"/>
+    <circle cx="21" cy="29" r="13"/>
+  </svg>`,
+
+  wave: `<svg viewBox="0 0 44 44" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
+    <path d="M4,28 Q14,14 22,28 Q30,42 40,28"/>
+  </svg>`,
 };

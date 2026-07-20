@@ -91,6 +91,16 @@ body {
 .btn.on-thunder   { background: var(--sel-thr-bg);   border-color: #2e2c0e; color: var(--col-thunder); }
 .btn.on-blizzard  { background: var(--sel-blz-bg);   border-color: #0e1e32; color: var(--col-blizzard); }
 
+/* Icon mode: buttons that have a data-icon get an SVG injected alongside
+   their text (see initIconButtons() in app.js); this just toggles which one
+   shows. Buttons with no icon (Create/Join/Leave/Reset etc.) are untouched
+   since they never get a .btn-icon span in the first place. */
+.btn-icon { display: none; width: 34px; height: 38px; flex-shrink: 0; }
+.btn-icon svg { width: 100%; height: 100%; }
+.btn-icon img { width: 100%; height: 100%; object-fit: contain; }
+body.icon-mode .btn[data-icon] .btn-text { display: none; }
+body.icon-mode .btn[data-icon] .btn-icon { display: flex; align-items: center; justify-content: center; }
+
 .btn-reset {
   padding: 8px 20px;
   background: var(--sel-fake-bg);
@@ -191,9 +201,16 @@ body {
 .input-row { display: flex; align-items: center; gap: 8px; width: 100%; }
 .row-label { font-size: 13px; color: var(--text-dim); width: 68px; flex-shrink: 0; }
 
-/* All buttons in input rows expand to fill equally within their group */
+/* All buttons in input rows expand to fill equally within their group.
+   Fixed height + flex-centered content (used for both plain text and, in
+   icon mode, the icon) so toggling icon mode never changes the button's
+   size or reflows surrounding rows — only what's centered inside changes. */
 .btn-group { display: flex; gap: 6px; flex: 1; position: relative; }
-.btn-group .btn { flex: 1; text-align: center; padding: 13px 8px; }
+.btn-group .btn {
+  flex: 1; height: 46px; box-sizing: border-box;
+  display: flex; align-items: center; justify-content: center;
+  text-align: center; padding: 0 8px;
+}
 
 .btn-group[data-tip]::after {
   content: attr(data-tip);
@@ -309,6 +326,10 @@ body {
       <input type="checkbox" id="enforce-order-cb" onchange="toggleEnforceOrder()">
       Enforce mechanic order (require #1 before #2 can be set)
     </label>
+    <label class="option-row">
+      <input type="checkbox" id="icon-mode-cb" onchange="toggleIconMode()">
+      Icon mode (show icons instead of button text)
+    </label>
   </div>
 
   <div class="main-card">
@@ -338,17 +359,17 @@ body {
     <div class="input-section">
       <div class="section-label">Floor AOE #1</div>
       <div class="input-row">
-        <div class="row-label">Type</div>
-        <div class="btn-group">
-          <button class="btn" id="t1i" onclick="set('it1type','inferno')">Inferno</button>
-          <button class="btn" id="t1t" onclick="set('it1type','tsunami')">Tsunami</button>
-        </div>
-      </div>
-      <div class="input-row">
         <div class="row-label">Cast</div>
         <div class="btn-group">
           <button class="btn" id="i1r" onclick="set('it1rf','real')">Real</button>
           <button class="btn" id="i1f" onclick="set('it1rf','fake')">Fake</button>
+        </div>
+      </div>
+      <div class="input-row">
+        <div class="row-label">Type</div>
+        <div class="btn-group">
+          <button class="btn" id="t1i" onclick="set('it1type','inferno')">Inferno</button>
+          <button class="btn" id="t1t" onclick="set('it1type','tsunami')">Tsunami</button>
         </div>
       </div>
     </div>
@@ -377,17 +398,17 @@ body {
     <div class="input-section">
       <div class="section-label">Floor AOE #2</div>
       <div class="input-row">
-        <div class="row-label">Type</div>
-        <div class="btn-group" id="t2type-group">
-          <button class="btn" id="t2i" disabled>Inferno</button>
-          <button class="btn" id="t2t" disabled>Tsunami</button>
-        </div>
-      </div>
-      <div class="input-row">
         <div class="row-label">Cast</div>
         <div class="btn-group" id="i2rf-group">
           <button class="btn" id="i2r" onclick="set('it2rf','real')">Real</button>
           <button class="btn" id="i2f" onclick="set('it2rf','fake')">Fake</button>
+        </div>
+      </div>
+      <div class="input-row">
+        <div class="row-label">Type</div>
+        <div class="btn-group" id="t2type-group">
+          <button class="btn" id="t2i" disabled>Inferno</button>
+          <button class="btn" id="t2t" disabled>Tsunami</button>
         </div>
       </div>
     </div>
