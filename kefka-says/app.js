@@ -11,7 +11,20 @@ const S = {
 function tog(k)    { S[k] = !S[k]; render(); }
 function set(k, v) { S[k] = S[k] === v ? null : v; render(); }
 function exc(k, v) { S[k] = S[k] === v ? null : v; render(); }
-function reset()   { for (const k of Object.keys(S)) { if (k !== 'enforceOrder') S[k] = k.endsWith('accel') ? false : null; } render(); }
+
+// g1pos/g2pos/g1accel/g2accel are personal (not in SYNC_KEYS — see below),
+// so a remote reset() never reached them through the normal state sync.
+// _pendingClearDebuffs piggybacks a one-shot flag onto the very next
+// syncState() push so every other client clears its own copy too.
+const PERSONAL_KEYS = ['g1pos', 'g2pos', 'g1accel', 'g2accel'];
+function clearLocalDebuffs() { for (const k of PERSONAL_KEYS) S[k] = k.endsWith('accel') ? false : null; }
+
+let _pendingClearDebuffs = false;
+function reset() {
+  for (const k of Object.keys(S)) { if (k !== 'enforceOrder') S[k] = k.endsWith('accel') ? false : null; }
+  _pendingClearDebuffs = true;
+  render();
+}
 
 function toggleEnforceOrder() {
   S.enforceOrder = document.getElementById('enforce-order-cb').checked;
@@ -278,6 +291,7 @@ function connectWS(onopen) {
     } else if (msg.type === 'state') {
       _applying = true;
       applyShared(msg.state);
+      if (msg.state.clearDebuffs) clearLocalDebuffs();
       render();
       _applying = false;
     } else if (msg.type === 'error') {
@@ -307,7 +321,9 @@ function joinSessionFromInput() {
 
 function syncState() {
   if (!_ws || _ws.readyState !== WebSocket.OPEN) return;
-  _ws.send(JSON.stringify({ type: 'state', state: sharedState() }));
+  const state = sharedState();
+  if (_pendingClearDebuffs) { state.clearDebuffs = true; _pendingClearDebuffs = false; }
+  _ws.send(JSON.stringify({ type: 'state', state }));
 }
 
 function leaveSession() {
@@ -350,15 +366,16 @@ const BTN_VECTOR_ICON = {
 // them (Compressed Water / Forked Lightning / Acceleration Bomb / Entropy /
 // Dynamic Fluid), so these show the actual game icon instead of a
 // hand-drawn approximation — same real-name-lookup principle as the
-// Dalamud plugin's GameIcons.cs, just resolved once here (via XIVAPI v2's
-// search, verified during development) rather than at runtime against local
-// game data, since a browser has no access to that.
+// Dalamud plugin's GameIcons.cs. Self-hosted under assets/icons/ (originally
+// resolved via XIVAPI v2's search/asset endpoints during development) rather
+// than fetched from XIVAPI at runtime — these 5 icons never change, so
+// there's no reason to depend on a third party being up mid-raid.
 const GAME_ICON_PATH = {
-  compressedWater: 'ui/icon/215000/215696.tex',
-  forkedLightning: 'ui/icon/215000/215623.tex',
-  accelerationBomb: 'ui/icon/215000/215727.tex',
-  entropy: 'ui/icon/215000/215902.tex',
-  dynamicFluid: 'ui/icon/215000/215903.tex',
+  compressedWater: 'assets/icons/compressed-water.png',
+  forkedLightning: 'assets/icons/forked-lightning.png',
+  accelerationBomb: 'assets/icons/acceleration-bomb.png',
+  entropy: 'assets/icons/entropy.png',
+  dynamicFluid: 'assets/icons/dynamic-fluid.png',
 };
 const BTN_GAME_ICON = {
   g1wa: GAME_ICON_PATH.compressedWater, g2wa: GAME_ICON_PATH.compressedWater,
@@ -367,12 +384,6 @@ const BTN_GAME_ICON = {
   t1i: GAME_ICON_PATH.entropy, t2i: GAME_ICON_PATH.entropy,
   t1t: GAME_ICON_PATH.dynamicFluid, t2t: GAME_ICON_PATH.dynamicFluid,
 };
-
-// A plain <img> (not fetch/XHR) needs no CORS headers to render cross-origin,
-// so this works regardless of XIVAPI's CORS policy.
-function gameIconUrl(path) {
-  return `https://v2.xivapi.com/api/asset?path=${encodeURIComponent(path)}&format=png`;
-}
 
 // Wraps each mapped button's existing text in a span alongside an injected
 // icon span, once at load — render() never touches these buttons'
@@ -391,7 +402,7 @@ function initIconButtons() {
     if (!btn) continue;
     const text = btn.textContent;
     btn.dataset.icon = 'game';
-    btn.innerHTML = `<span class="btn-text">${text}</span><span class="btn-icon"><img src="${gameIconUrl(path)}" alt="${text}" loading="lazy"></span>`;
+    btn.innerHTML = `<span class="btn-text">${text}</span><span class="btn-icon"><img src="${path}" alt="${text}" loading="lazy"></span>`;
   }
 }
 
