@@ -56,6 +56,11 @@ public sealed class Plugin : IDalamudPlugin
         PluginInterface.UiBuilder.Draw += _windowSystem.Draw;
         PluginInterface.UiBuilder.OpenMainUi += () => _kefkaWindow.IsOpen = true;
         PluginInterface.UiBuilder.OpenConfigUi += () => _configWindow.IsOpen = true;
+
+        // A wrong password, a taken custom room code, etc. used to only hit
+        // the plugin log (see ReportInvalidCommand's comment below) —
+        // nobody actually trying to join would ever see why it failed.
+        _session.SessionError += msg => ChatGui.PrintError($"XIV Raid Tools: {msg}");
     }
 
     // A Log.Warning alone is invisible in practice — it only reaches the

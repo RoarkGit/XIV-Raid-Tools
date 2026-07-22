@@ -187,10 +187,12 @@ public sealed class KefkaSaysWindow : Window
         DrawThunderBlizzard();
     }
 
-    // Session controls, the enforce-order checkbox, and Reset all share one
-    // top bar now instead of two stacked rows — the session bar's own
-    // controls (Create/Join or Room/Leave) are short, so there was no need
-    // for "Enforce mechanic order" to have a whole row to itself below them.
+    // Session controls get their own row, with the enforce-order checkbox
+    // and History/Reset on a second row below — the Idle row alone now
+    // packs Create/room code/Join/password into one line, so folding
+    // everything else onto the end of it (as a single row used to) left no
+    // room to breathe and started clipping (see the screenshot that
+    // prompted this: Reset was getting cut off at the window edge).
     private void DrawTopBar()
     {
         var s = _session.State;
@@ -205,6 +207,10 @@ public sealed class KefkaSaysWindow : Window
                 {
                     ImGui.SameLine();
                     ImGui.TextColored(Theme.TextDim, "· Password protected");
+                    // Not sensitive enough to hide from someone already in
+                    // the room — the share link already carries it in plain
+                    // text (see copyRoom() in kefka-says's session.js).
+                    if (ImGui.IsItemHovered()) ImGui.SetTooltip($"Password: {_session.Password}");
                 }
                 ImGui.SameLine();
                 if (ImGui.Button("Leave")) _session.Leave();
@@ -226,32 +232,37 @@ public sealed class KefkaSaysWindow : Window
 
             case SessionStatus.Idle:
             default:
-                // Same field Join reads below — typing a code and hitting
-                // Create claims that exact code (if free) instead of a
-                // random one, matching the webapp's createSession(). _roomInput
-                // is a persistent field, already current by the time this
-                // click fires even though the button is drawn first.
-                if (ImGui.Button("Create session")) _ = _session.CreateAsync(_passwordInput, _roomInput);
+                // One action instead of separate Create/Join buttons —
+                // leave the code blank for a fresh room, or type one to join
+                // it (falling back to creating that exact code if it
+                // doesn't exist yet). Matches the webapp's single Join
+                // button/joinOrCreate(). _roomInput is a persistent field,
+                // already current by the time this click fires even though
+                // the button is drawn first.
+                // Join pinned first (left), where the old Create button
+                // used to sit, rather than sandwiched between the two
+                // inputs — matches the webapp's layout.
+                var joinClicked = ImGui.Button("Join");
+                // No room on the webapp's session-card for a standing hint
+                // here — a hover tooltip carries the same "leave it blank"
+                // note instead (see index.html's .session-hint).
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Leave the code blank to create a room with a random one.");
                 ImGui.SameLine();
                 ImGui.SetNextItemWidth(60);
                 // EnterReturnsTrue mirrors the webapp's room-input onkeydown
                 // handler (index.html) — Enter joins the same as clicking Join.
-                var enterPressed = ImGui.InputTextWithHint("##room", "ABCD", ref _roomInput, 4,
+                var enterPressed = ImGui.InputTextWithHint("##room", "Code", ref _roomInput, 4,
                     ImGuiInputTextFlags.CharsUppercase | ImGuiInputTextFlags.EnterReturnsTrue);
-                ImGui.SameLine();
-                var joinClicked = ImGui.Button("Join");
-                if ((enterPressed || joinClicked) && _roomInput.Length == 4) _ = _session.JoinAsync(_roomInput, _passwordInput);
+                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Leave the code blank to create a room with a random one.");
+                if ((enterPressed || joinClicked) && (_roomInput.Length == 0 || _roomInput.Length == 4))
+                    _ = _session.JoinOrCreateAsync(_roomInput, _passwordInput);
                 ImGui.SameLine();
                 ImGui.SetNextItemWidth(150); // wide enough that the "Password (optional)" hint isn't clipped
-                // Same field feeds both Create (sets a new room's password)
-                // and Join (supplies one to check against) — the two actions
-                // never happen at once, so there's no ambiguity in reusing it.
                 ImGui.InputTextWithHint("##roompassword", "Password (optional)", ref _passwordInput, 64,
                     ImGuiInputTextFlags.Password);
                 break;
         }
 
-        ImGui.SameLine();
         var enforceOrder = s.EnforceOrder;
         if (ImGui.Checkbox("Enforce order", ref enforceOrder))
         {

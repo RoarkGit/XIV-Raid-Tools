@@ -202,6 +202,11 @@ const Session = (() => {
       if (msg.type === 'created' || msg.type === 'joined') {
         P.sessionId = msg.room;
         P.status = 'active';
+        // hasPassword reflects whether the ROOM actually requires one, not
+        // whether we happened to type something into that field — without
+        // this, joining an unprotected room after typing a (server-ignored)
+        // password would wrongly keep showing "🔒 Password protected".
+        if (!msg.hasPassword) P.password = null;
         _desiredRoom = P.sessionId;
         _reconnectAttempt = 0;
         renderSession();
@@ -240,8 +245,22 @@ const Session = (() => {
     };
   }
 
+  let _errorFadeTimer = null;
+  function showSessionError(msg) {
+    clearTimeout(_errorFadeTimer);
+    const el = document.getElementById('session-error');
+    el.textContent = msg;
+    el.style.display = 'block';
+    _errorFadeTimer = setTimeout(() => { el.style.display = 'none'; }, 5000);
+  }
+
+  function hideSessionError() {
+    clearTimeout(_errorFadeTimer);
+    document.getElementById('session-error').style.display = 'none';
+  }
+
   function defaultError(msg) {
-    alert('Session error: ' + msg);
+    showSessionError(msg);
     leaveSession();
   }
 
@@ -280,29 +299,40 @@ const Session = (() => {
   }
 
 
+  // One button instead of separate Create/Join — typing nothing and
+  // clicking it creates a fresh (random-code) room, same as Create used to.
+  // Typing a code tries to join it, falling back to creating that exact
+  // code only if it doesn't exist yet (not on any other error — a wrong
+  // password shouldn't silently spin up an unrelated empty room). Two
+  // people independently typing the same code and both landing in one room
+  // is the whole point of a shared code, not a collision to guard against.
+  //
   // 'client: webapp' tells the relay this connection counts toward ready
   // check (see server/index.js's webappCount) — the Dalamud plugin identifies
   // itself as 'plugin' instead and is excluded, since the game already has
   // its own ready check.
-  function createSession() {
-    // Same input the Join button reads from — typing a code here and hitting
-    // Create claims that exact code (if it's free) instead of a random one,
-    // rather than needing a separate field just for this. Left blank, the
-    // server falls back to a random code. An already-taken or malformed
-    // code comes back as a normal 'error' message, same alert path as a
-    // wrong password or a bad Join code.
+  function joinOrCreate() {
+    hideSessionError();
     const room = document.getElementById('room-input').value.trim().toUpperCase();
     const pw = document.getElementById('room-password-input').value;
     P.password = pw || null;
-    connectWS(() => _ws.send(JSON.stringify({ type: 'create', room: room || undefined, password: pw || undefined, client: 'webapp' })));
-  }
 
-  function joinSessionFromInput() {
-    const val = document.getElementById('room-input').value.trim().toUpperCase();
-    if (val.length !== 4) return;
-    const pw = document.getElementById('room-password-input').value;
-    P.password = pw || null;
-    connectWS(() => _ws.send(JSON.stringify({ type: 'join', room: val, password: pw || undefined, client: 'webapp' })));
+    if (!room) {
+      connectWS(() => _ws.send(JSON.stringify({ type: 'create', password: pw || undefined, client: 'webapp' })));
+      return;
+    }
+    if (room.length !== 4) return;
+
+    connectWS(
+      () => _ws.send(JSON.stringify({ type: 'join', room, password: pw || undefined, client: 'webapp' })),
+      (errorMsg) => {
+        if (errorMsg === 'Room not found.') {
+          connectWS(() => _ws.send(JSON.stringify({ type: 'create', room, password: pw || undefined, client: 'webapp' })));
+        } else {
+          defaultError(errorMsg);
+        }
+      },
+    );
   }
 
   // extra carries whatever one-shot flags the tool wants to piggyback onto
@@ -342,6 +372,7 @@ const Session = (() => {
 
   function renderSession() {
     document.getElementById('sbar-idle').style.display         = P.status === 'idle'         ? '' : 'none';
+    document.getElementById('join-hint').style.display         = P.status === 'idle'         ? '' : 'none';
     document.getElementById('sbar-active').style.display       = P.status === 'active'       ? '' : 'none';
     document.getElementById('sbar-reconnecting').style.display = P.status === 'reconnecting' ? '' : 'none';
     if (P.status === 'reconnecting') {
@@ -349,7 +380,12 @@ const Session = (() => {
     }
     if (P.sessionId) document.getElementById('room-code-val').textContent = P.sessionId;
     document.getElementById('room-count').textContent = `· ${P.count} connected`;
-    document.getElementById('room-lock').style.display = P.password ? '' : 'none';
+    // Revealed on hover via the native title tooltip — not sensitive enough
+    // to hide from someone already in the room, since the share link
+    // already carries it in plain text anyway (see copyRoom() below).
+    const lock = document.getElementById('room-lock');
+    lock.style.display = P.password ? '' : 'none';
+    lock.title = P.password ? `Password: ${P.password}` : '';
   }
 
   // Registers the tool's callbacks, then auto-joins if the URL carries
@@ -374,8 +410,7 @@ const Session = (() => {
     init,
     isApplyingRemote: () => _applying,
     syncState,
-    createSession,
-    joinSessionFromInput,
+    joinOrCreate,
     leaveSession,
     copyRoom,
     startReadyCheck,

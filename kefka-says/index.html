@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/svg+xml" href="favicon.svg">
 <title>Kefka Says · UMAD</title>
 <style>
 :root {
@@ -157,10 +158,13 @@ body.icon-mode .btn[data-icon] .btn-icon { display: flex; align-items: center; j
   margin-bottom: 10px;
 }
 .session-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.section-label-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.section-label-row .section-label { margin-bottom: 0; }
+.session-hint { font-size: 12px; color: var(--text-dim); }
 .room-input {
   background: var(--btn-bg); border: 1px solid var(--border);
   color: var(--text); font-size: 13px; font-family: inherit;
-  padding: 10px 12px; border-radius: 6px; width: 110px; outline: none;
+  padding: 10px 12px; border-radius: 6px; width: 90px; outline: none;
   text-transform: uppercase; letter-spacing: 1px;
 }
 .room-input:focus { border-color: #383870; }
@@ -172,7 +176,17 @@ body.icon-mode .btn[data-icon] .btn-icon { display: flex; align-items: center; j
 }
 .room-password-input:focus { border-color: #383870; }
 .room-password-input::placeholder { color: var(--text-dim); }
-.room-lock { font-size: 12px; color: var(--text-dim); }
+.room-lock { font-size: 12px; color: var(--text-dim); cursor: help; }
+.session-error {
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--col-fake);
+  background: var(--sel-fake-bg);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
 .session-dot {
   display: inline-block; width: 7px; height: 7px; border-radius: 50%;
   background: var(--col-real); flex-shrink: 0;
@@ -371,14 +385,16 @@ body.icon-mode .btn[data-icon] .btn-icon { display: flex; align-items: center; j
 
   <!-- Session -->
   <div class="session-card">
-    <div class="section-label">Session</div>
+    <div class="section-label-row">
+      <span class="section-label">Session</span>
+      <span id="join-hint" class="session-hint">— leave the code blank to create a room with a random one</span>
+    </div>
     <div id="sbar-idle" class="session-row">
-      <button class="btn" onclick="Session.createSession()">Create</button>
-      <input id="room-input" class="room-input" type="text" maxlength="4" placeholder="Room code"
-             spellcheck="false" onkeydown="if(event.key==='Enter')Session.joinSessionFromInput()">
+      <button class="btn" onclick="Session.joinOrCreate()">Join</button>
+      <input id="room-input" class="room-input" type="text" maxlength="4" placeholder="Code"
+             spellcheck="false" onkeydown="if(event.key==='Enter')Session.joinOrCreate()">
       <input id="room-password-input" class="room-password-input" type="password" placeholder="Password (optional)"
-             spellcheck="false" onkeydown="if(event.key==='Enter')Session.joinSessionFromInput()">
-      <button class="btn" onclick="Session.joinSessionFromInput()">Join</button>
+             spellcheck="false" onkeydown="if(event.key==='Enter')Session.joinOrCreate()">
     </div>
     <div id="sbar-active" class="session-row" style="display:none;">
       <span class="session-dot"></span>
@@ -399,6 +415,7 @@ body.icon-mode .btn[data-icon] .btn-icon { display: flex; align-items: center; j
       <span class="session-info">Reconnecting to <span id="reconnecting-room"></span>&hellip;</span>
       <button class="btn" onclick="Session.leaveSession()" style="margin-left:auto;">Give up</button>
     </div>
+    <div id="session-error" class="session-error" style="display:none;"></div>
     <div id="ready-check-banner" class="ready-check-banner">
       <span id="ready-check-count"></span>
       <span id="ready-check-actions" class="ready-check-actions">

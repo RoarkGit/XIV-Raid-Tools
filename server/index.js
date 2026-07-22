@@ -110,7 +110,7 @@ wss.on('connection', (ws) => {
       if (password) roomPasswords.set(id, password);
       ws._room = id;
       if (msg.client === 'plugin') ws._client = 'plugin';
-      ws.send(JSON.stringify({ type: 'created', room: id }));
+      ws.send(JSON.stringify({ type: 'created', room: id, hasPassword: !!password }));
       broadcastCount(id);
 
     } else if (msg.type === 'join') {
@@ -136,7 +136,13 @@ wss.on('connection', (ws) => {
       rooms.get(id).add(ws);
       ws._room = id;
       if (msg.client === 'plugin') ws._client = 'plugin';
-      ws.send(JSON.stringify({ type: 'joined', room: id }));
+      // hasPassword reflects whether the ROOM actually requires one, not
+      // whether this joiner happened to type something into that field —
+      // without it, a client that typed a password joining an unprotected
+      // room (where the server just ignores the field) would have no way
+      // to tell it wasn't actually needed, and would wrongly show itself
+      // as "password protected".
+      ws.send(JSON.stringify({ type: 'joined', room: id, hasPassword: roomPasswords.has(id) }));
       broadcastCount(id);
       // Catches the new (or reconnecting) member up on whatever's already
       // been synced in this room — without this a join always starts blank
