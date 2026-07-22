@@ -9,7 +9,22 @@ const S = {
 };
 
 function tog(k)    { S[k] = !S[k]; render(); }
-function set(k, v) { S[k] = S[k] === v ? null : v; render(); }
+
+// When k was last set by an INCOMING remote update (see applyShared) —
+// used below to stop a race where two people click the same correct call
+// at nearly the same instant: if A's click's broadcast reaches B right
+// before B's own (independent, already in-flight) click on the same value
+// registers, naive toggle-off logic reads "already set to what I clicked"
+// and clears it, undoing A's call out from under them. Within this window,
+// treat that as B confirming the call, not un-calling it.
+const _remoteSetAt = {};
+const RACE_WINDOW_MS = 400;
+
+function set(k, v) {
+  if (S[k] === v && Date.now() - (_remoteSetAt[k] || 0) < RACE_WINDOW_MS) return;
+  S[k] = S[k] === v ? null : v;
+  render();
+}
 function exc(k, v) { S[k] = S[k] === v ? null : v; render(); }
 
 // g1pos/g2pos/g1accel/g2accel are personal (not in SYNC_KEYS — see below),
@@ -375,7 +390,10 @@ function sharedState() {
 }
 
 function applyShared(state) {
-  for (const k of SYNC_KEYS) { if (k in state) S[k] = state[k]; }
+  const now = Date.now();
+  for (const k of SYNC_KEYS) {
+    if (k in state) { S[k] = state[k]; _remoteSetAt[k] = now; }
+  }
 }
 
 // Thin wrapper so render()'s tail call stays a plain syncState() — attaches

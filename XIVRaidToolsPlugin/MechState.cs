@@ -232,6 +232,20 @@ public sealed class MechState : ISyncedState
         ["enforceOrder"] = EnforceOrder,
     };
 
+    // When a field was last set by an INCOMING remote update (see
+    // ApplyRemote) — consulted by KefkaSaysWindow's click handlers before
+    // toggling a synced field off, to stop a race where two people click
+    // the same correct call at nearly the same instant: if A's click's
+    // broadcast reaches B right before B's own (independent, already
+    // in-flight) click on the same value registers, naive toggle-off logic
+    // reads "already set to what I clicked" and clears it, undoing A's call
+    // out from under them. Mirrors kefka-says/app.js's _remoteSetAt.
+    private readonly Dictionary<string, DateTime> _remoteSetAt = new();
+    private const int RaceWindowMs = 400;
+
+    public bool WasJustSetRemotely(string field) =>
+        _remoteSetAt.TryGetValue(field, out var at) && (DateTime.UtcNow - at).TotalMilliseconds < RaceWindowMs;
+
     public void ApplyRemote(JsonObject state)
     {
         // Must check ContainsKey, not `state["k"] is {}` — JsonObject's indexer
@@ -239,13 +253,14 @@ public sealed class MechState : ISyncedState
         // null, so an `is {}` check can't tell "not sent" apart from "cleared".
         // app.js's applyShared avoids this with `if (k in state)`; we need the
         // same distinction or Reset()/unsetting a field never reaches peers.
-        if (state.ContainsKey("g1rf")) G1Rf = StrToRf(state["g1rf"]?.GetValue<string>());
-        if (state.ContainsKey("g2rf")) G2Rf = StrToRf(state["g2rf"]?.GetValue<string>());
-        if (state.ContainsKey("it1type")) It1Type = StrToType(state["it1type"]?.GetValue<string>());
-        if (state.ContainsKey("it1rf")) It1Rf = StrToRf(state["it1rf"]?.GetValue<string>());
-        if (state.ContainsKey("it2rf")) It2Rf = StrToRf(state["it2rf"]?.GetValue<string>());
-        if (state.ContainsKey("thunderRF")) ThunderRf = StrToRf(state["thunderRF"]?.GetValue<string>());
-        if (state.ContainsKey("blizzardRF")) BlizzardRf = StrToRf(state["blizzardRF"]?.GetValue<string>());
+        var now = DateTime.UtcNow;
+        if (state.ContainsKey("g1rf")) { G1Rf = StrToRf(state["g1rf"]?.GetValue<string>()); _remoteSetAt["g1rf"] = now; }
+        if (state.ContainsKey("g2rf")) { G2Rf = StrToRf(state["g2rf"]?.GetValue<string>()); _remoteSetAt["g2rf"] = now; }
+        if (state.ContainsKey("it1type")) { It1Type = StrToType(state["it1type"]?.GetValue<string>()); _remoteSetAt["it1type"] = now; }
+        if (state.ContainsKey("it1rf")) { It1Rf = StrToRf(state["it1rf"]?.GetValue<string>()); _remoteSetAt["it1rf"] = now; }
+        if (state.ContainsKey("it2rf")) { It2Rf = StrToRf(state["it2rf"]?.GetValue<string>()); _remoteSetAt["it2rf"] = now; }
+        if (state.ContainsKey("thunderRF")) { ThunderRf = StrToRf(state["thunderRF"]?.GetValue<string>()); _remoteSetAt["thunderRF"] = now; }
+        if (state.ContainsKey("blizzardRF")) { BlizzardRf = StrToRf(state["blizzardRF"]?.GetValue<string>()); _remoteSetAt["blizzardRF"] = now; }
         if (state.ContainsKey("enforceOrder")) EnforceOrder = state["enforceOrder"]?.GetValue<bool>() ?? false;
 
         // See ClearLocalDebuffs's comment — clears THIS client's own

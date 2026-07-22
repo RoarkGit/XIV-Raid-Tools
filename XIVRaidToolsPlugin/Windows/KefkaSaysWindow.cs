@@ -344,7 +344,12 @@ public sealed class KefkaSaysWindow : Window
 
         void SetRf(int g, RF v)
         {
+            var field = g == 1 ? "g1rf" : "g2rf";
             var cur = g == 1 ? s.G1Rf : s.G2Rf;
+            // Someone else's call for this same value just arrived — treat
+            // our own (independently in-flight) click as confirming it
+            // rather than un-calling it. See MechState.WasJustSetRemotely.
+            if (cur == v && s.WasJustSetRemotely(field)) return;
             var next = cur == v ? RF.None : v;
             if (g == 1) s.G1Rf = next; else s.G2Rf = next;
             _session.PushState();
@@ -375,9 +380,26 @@ public sealed class KefkaSaysWindow : Window
             TypeRow("floor2type", s.It2Type, true, null);
         }
 
-        void SetType(FloorType v) { s.It1Type = s.It1Type == v ? FloorType.None : v; _session.PushState(); }
-        void SetIt1Rf(RF v) { s.It1Rf = s.It1Rf == v ? RF.None : v; _session.PushState(); }
-        void SetIt2Rf(RF v) { s.It2Rf = s.It2Rf == v ? RF.None : v; _session.PushState(); }
+        // Each guards against the same click-race as SetRf above before
+        // toggling off — see MechState.WasJustSetRemotely.
+        void SetType(FloorType v)
+        {
+            if (s.It1Type == v && s.WasJustSetRemotely("it1type")) return;
+            s.It1Type = s.It1Type == v ? FloorType.None : v;
+            _session.PushState();
+        }
+        void SetIt1Rf(RF v)
+        {
+            if (s.It1Rf == v && s.WasJustSetRemotely("it1rf")) return;
+            s.It1Rf = s.It1Rf == v ? RF.None : v;
+            _session.PushState();
+        }
+        void SetIt2Rf(RF v)
+        {
+            if (s.It2Rf == v && s.WasJustSetRemotely("it2rf")) return;
+            s.It2Rf = s.It2Rf == v ? RF.None : v;
+            _session.PushState();
+        }
     }
 
     // Two small bordered panes side by side (reusing the status column's
@@ -402,11 +424,22 @@ public sealed class KefkaSaysWindow : Window
             // btnCls('thr',...,'thunder') vs btnCls('thf',...,'fake') asymmetry.
             ImGui.TableNextColumn();
             GroupCard("Thunder", () => CastRow("thunder", s.ThunderRf, AccentTag.Thunder, false, null,
-                v => { s.ThunderRf = s.ThunderRf == v ? RF.None : v; _session.PushState(); }));
+                v =>
+                {
+                    // Same click-race guard as SetRf — see MechState.WasJustSetRemotely.
+                    if (s.ThunderRf == v && s.WasJustSetRemotely("thunderRF")) return;
+                    s.ThunderRf = s.ThunderRf == v ? RF.None : v;
+                    _session.PushState();
+                }));
 
             ImGui.TableNextColumn();
             GroupCard("Blizzard", () => CastRow("blizzard", s.BlizzardRf, AccentTag.Blizzard, false, null,
-                v => { s.BlizzardRf = s.BlizzardRf == v ? RF.None : v; _session.PushState(); }));
+                v =>
+                {
+                    if (s.BlizzardRf == v && s.WasJustSetRemotely("blizzardRF")) return;
+                    s.BlizzardRf = s.BlizzardRf == v ? RF.None : v;
+                    _session.PushState();
+                }));
 
             ImGui.EndTable();
         }
