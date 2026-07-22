@@ -1,12 +1,17 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <!-- X Pulse: the toolset's own X, with broadcast arcs radiating off it —
+  <!-- X Pulse: the toolset's own X, with broadcast arcs radiating off it,
        see the icon-concepts artifact for the full set this was chosen from.
+       Each ring is ONE continuous arc (not two mirrored halves meeting at a
+       point), so there's no seam where two round end-caps would otherwise
+       collide. Shifted down 4px from center via the group transform so the
+       composition (which is top-heavy: two arcs, nothing below) balances
+       in a square frame instead of sitting high with dead space beneath it.
        Deliberately its own two-color accent (not any mechanic color from
        the app's palette), since it's a brand mark, not a debuff callout. -->
-  <path d="M16 8.5 A7.5 7.5 0 0 1 23.5 16" fill="none" stroke="#6a3df5" stroke-width="2" stroke-linecap="round"/>
-  <path d="M16 8.5 A7.5 7.5 0 0 0 8.5 16" fill="none" stroke="#6a3df5" stroke-width="2" stroke-linecap="round"/>
-  <path d="M16 3.5 A12.5 12.5 0 0 1 28.5 16" fill="none" stroke="#ff5fa8" stroke-width="2" stroke-linecap="round" opacity="0.85"/>
-  <path d="M16 3.5 A12.5 12.5 0 0 0 3.5 16" fill="none" stroke="#ff5fa8" stroke-width="2" stroke-linecap="round" opacity="0.85"/>
-  <path d="M13.2 13.2 L18.8 18.8" stroke="#6a3df5" stroke-width="2.6" stroke-linecap="round"/>
-  <path d="M18.8 13.2 L13.2 18.8" stroke="#6a3df5" stroke-width="2.6" stroke-linecap="round"/>
+  <g transform="translate(0, 4)">
+    <path d="M7 16 A9 9 0 0 1 25 16" fill="none" stroke="#6a3df5" stroke-width="2" stroke-linecap="round"/>
+    <path d="M2.5 16 A13.5 13.5 0 0 1 29.5 16" fill="none" stroke="#ff5fa8" stroke-width="2" stroke-linecap="round" opacity="0.85"/>
+    <path d="M11.8 11.8 L20.2 20.2" stroke="#6a3df5" stroke-width="3.2" stroke-linecap="round"/>
+    <path d="M20.2 11.8 L11.8 20.2" stroke="#6a3df5" stroke-width="3.2" stroke-linecap="round"/>
+  </g>
 </svg>
