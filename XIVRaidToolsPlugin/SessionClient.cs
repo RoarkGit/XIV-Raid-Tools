@@ -11,20 +11,33 @@ namespace XIVRaidToolsPlugin;
 
 public enum SessionStatus { Idle, Connecting, Active, Reconnecting }
 
-// Speaks the exact same protocol as kefka-says/app.js's connectWS/syncState:
+// Non-generic home for members that don't depend on TState — referencing a
+// generic class's static members from outside always needs a type argument
+// (SessionClient<MechState>.Foo), which is awkward for something like a
+// config UI's URL hint that has nothing to do with any tool's state shape.
+public static class SessionDefaults
+{
+    // Same production URL as kefka-says/session.js's WS_URL. Overridable
+    // per-user via Configuration.RelayUrlOverride (see Windows/ConfigWindow.cs).
+    public const string DefaultWsUrl = "wss://xiv-raid-tools-production.up.railway.app";
+}
+
+// Speaks the exact same protocol as kefka-says/session.js's connectWS/syncState:
 // {type:'create'} / {type:'join',room} -> {type:'created'|'joined',room}
 // {type:'state', state:{...}} broadcast to the rest of the room
-// SYNC_KEYS below must stay in lockstep with app.js's SYNC_KEYS array.
+// TState.Serialize()'s keys must stay in lockstep with the matching tool's
+// own SYNC_KEYS on the webapp side (app.js for Kefka Says).
+//
+// Generic over TState (an ISyncedState) so this connection/room/reconnect
+// machinery is reusable by a future second Dalamud tool with its own state
+// shape — this class itself has zero knowledge of Kefka Says' mechanic
+// fields, all of that lives in MechState now (see ISyncedState.cs).
 //
 // Unlike the webapp (which doesn't retry a dropped connection — you just
 // reload the page), this reconnects with backoff, since "reload the tab" has
 // no in-game equivalent and a raid-night WS blip shouldn't lose the room.
-public sealed class SessionClient : IDisposable
+public sealed class SessionClient<TState> : IDisposable where TState : ISyncedState
 {
-    // Same production URL as kefka-says/app.js's WS_URL. Overridable per-user
-    // via Configuration.RelayUrlOverride (see Windows/ConfigWindow.cs).
-    public const string DefaultWsUrl = "wss://xiv-raid-tools-production.up.railway.app";
-
     private static readonly TimeSpan[] ReconnectDelays =
     {
         TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5),
@@ -38,7 +51,7 @@ public sealed class SessionClient : IDisposable
     // Read fresh on every connect attempt (not captured once) so a relay URL
     // change in ConfigWindow takes effect on the next create/join/reconnect
     // without needing a plugin restart.
-    private string WsUrl => string.IsNullOrWhiteSpace(_config.RelayUrlOverride) ? DefaultWsUrl : _config.RelayUrlOverride.Trim();
+    private string WsUrl => string.IsNullOrWhiteSpace(_config.RelayUrlOverride) ? SessionDefaults.DefaultWsUrl : _config.RelayUrlOverride.Trim();
 
     private ClientWebSocket? _ws;
     private CancellationTokenSource? _connCts;
@@ -52,10 +65,16 @@ public sealed class SessionClient : IDisposable
     private string? _desiredRoom;
     private int _reconnectAttempt;
 
+    // Remembered for the lifetime of the session (not just the initial
+    // send) so a dropped-connection reconnect's `join` still carries it —
+    // see ReconnectAfterDelayAsync. Null/empty means "no password set".
+    private string? _password;
+
     public string? RoomId { get; private set; }
     public SessionStatus Status { get; private set; } = SessionStatus.Idle;
     public bool Connected => _ws?.State == WebSocketState.Open;
-    public MechState State { get; } = new();
+    public TState State { get; }
+    public bool HasPassword => _password is not null;
 
     // Server broadcasts this whenever room membership changes (join/leave) —
     // see server/index.js's broadcastCount. Starts at 1 (just yourself)
@@ -65,18 +84,32 @@ public sealed class SessionClient : IDisposable
 
     public event Action? StateChanged;
 
-    public SessionClient(IPluginLog log, Configuration config)
+    public SessionClient(IPluginLog log, Configuration config, TState state)
     {
         _log = log;
         _config = config;
+        State = state;
     }
 
-    public Task CreateAsync() => OpenAsync(new JsonObject { ["type"] = "create" }, desiredRoom: null);
+    // roomCode lets the caller claim a specific code (if free) instead of
+    // a server-assigned random one — same optional-request/server-validates
+    // pattern as password, see server/index.js's create handler.
+    public Task CreateAsync(string? password = null, string? roomCode = null)
+    {
+        _password = string.IsNullOrEmpty(password) ? null : password;
+        var msg = new JsonObject { ["type"] = "create", ["client"] = "plugin" };
+        if (_password is not null) msg["password"] = _password;
+        if (!string.IsNullOrEmpty(roomCode)) msg["room"] = roomCode.ToUpperInvariant();
+        return OpenAsync(msg, desiredRoom: null);
+    }
 
-    public Task JoinAsync(string room)
+    public Task JoinAsync(string room, string? password = null)
     {
         room = room.ToUpperInvariant();
-        return OpenAsync(new JsonObject { ["type"] = "join", ["room"] = room }, desiredRoom: room);
+        _password = string.IsNullOrEmpty(password) ? null : password;
+        var msg = new JsonObject { ["type"] = "join", ["room"] = room, ["client"] = "plugin" };
+        if (_password is not null) msg["password"] = _password;
+        return OpenAsync(msg, desiredRoom: room);
     }
 
     private async Task OpenAsync(JsonObject initial, string? desiredRoom)
@@ -165,7 +198,9 @@ public sealed class SessionClient : IDisposable
         }
 
         if (_desiredRoom != room) return; // superseded by a manual Leave/Join/Create meanwhile
-        await ConnectOnceAsync(new JsonObject { ["type"] = "join", ["room"] = room });
+        var msg = new JsonObject { ["type"] = "join", ["room"] = room, ["client"] = "plugin" };
+        if (_password is not null) msg["password"] = _password;
+        await ConnectOnceAsync(msg);
     }
 
     private void HandleMessage(string json)
@@ -183,9 +218,13 @@ public sealed class SessionClient : IDisposable
             case "count" when msg["count"] is { } count:
                 ConnectedCount = count.GetValue<int>();
                 break;
+            // "readyCheck" is deliberately unhandled — the game already has
+            // its own ready check, so this plugin doesn't surface the
+            // webapp/relay's anonymous-count version at all, even if
+            // another room member (on the webapp) starts one.
             case "state" when msg["state"]?.AsObject() is { } state:
                 _applyingRemote = true;
-                ApplyRemote(state);
+                State.ApplyRemote(state);
                 _applyingRemote = false;
                 break;
             case "error":
@@ -196,66 +235,20 @@ public sealed class SessionClient : IDisposable
         StateChanged?.Invoke();
     }
 
-    // Call after any local mutation — mirrors app.js's render() -> syncState().
-    public void PushState()
+    // Call after any local mutation — mirrors session.js's syncState().
+    // configureExtra lets a caller piggyback one-shot keys onto this specific
+    // push (Kefka's Reset() attaches clearDebuffs/historySnapshot this way —
+    // see KefkaSaysWindow's Reset handling) on top of State.Serialize()'s
+    // normal synced fields, without SessionClient needing to know what those
+    // keys mean — TState.ApplyRemote is what interprets them on the
+    // receiving end.
+    public void PushState(Action<JsonObject>? configureExtra = null)
     {
         if (_applyingRemote || !Connected) return;
-        _ = SendAsync(new JsonObject { ["type"] = "state", ["state"] = BuildSharedState() });
-    }
-
-    // Reset needs one thing a plain PushState() can't do: tell every OTHER
-    // client to clear its own G1Pos/G2Pos/G1Accel/G2Accel too (see
-    // MechState.ClearLocalDebuffs's comment for why those aren't normal
-    // synced fields). Piggybacks a "clearDebuffs" flag on the same state
-    // message rather than a new WS message type — the relay server just
-    // forwards the `state` object opaquely, so this needs no server change,
-    // only ApplyRemote recognizing the flag on the receiving end.
-    public void PushReset()
-    {
-        if (_applyingRemote || !Connected) return;
-        var payload = BuildSharedState();
-        payload["clearDebuffs"] = true;
+        var payload = State.Serialize();
+        configureExtra?.Invoke(payload);
         _ = SendAsync(new JsonObject { ["type"] = "state", ["state"] = payload });
     }
-
-    private JsonObject BuildSharedState() => new()
-    {
-        ["g1rf"] = RfToStr(State.G1Rf),
-        ["g2rf"] = RfToStr(State.G2Rf),
-        ["it1type"] = TypeToStr(State.It1Type),
-        ["it1rf"] = RfToStr(State.It1Rf),
-        ["it2rf"] = RfToStr(State.It2Rf),
-        ["thunderRF"] = RfToStr(State.ThunderRf),
-        ["blizzardRF"] = RfToStr(State.BlizzardRf),
-        ["enforceOrder"] = State.EnforceOrder,
-    };
-
-    private void ApplyRemote(JsonObject state)
-    {
-        // Must check ContainsKey, not `state["k"] is {}` — JsonObject's indexer
-        // returns null both for an absent key AND a key explicitly set to JSON
-        // null, so an `is {}` check can't tell "not sent" apart from "cleared".
-        // app.js's applyShared avoids this with `if (k in state)`; we need the
-        // same distinction or Reset()/unsetting a field never reaches peers.
-        if (state.ContainsKey("g1rf")) State.G1Rf = StrToRf(state["g1rf"]?.GetValue<string>());
-        if (state.ContainsKey("g2rf")) State.G2Rf = StrToRf(state["g2rf"]?.GetValue<string>());
-        if (state.ContainsKey("it1type")) State.It1Type = StrToType(state["it1type"]?.GetValue<string>());
-        if (state.ContainsKey("it1rf")) State.It1Rf = StrToRf(state["it1rf"]?.GetValue<string>());
-        if (state.ContainsKey("it2rf")) State.It2Rf = StrToRf(state["it2rf"]?.GetValue<string>());
-        if (state.ContainsKey("thunderRF")) State.ThunderRf = StrToRf(state["thunderRF"]?.GetValue<string>());
-        if (state.ContainsKey("blizzardRF")) State.BlizzardRf = StrToRf(state["blizzardRF"]?.GetValue<string>());
-        if (state.ContainsKey("enforceOrder")) State.EnforceOrder = state["enforceOrder"]?.GetValue<bool>() ?? false;
-
-        // See PushReset's comment — clears THIS client's own local-only
-        // debuff fields in response to another client's Reset, never
-        // applies someone else's specific selection to us.
-        if (state.ContainsKey("clearDebuffs")) State.ClearLocalDebuffs();
-    }
-
-    private static string? RfToStr(RF v) => v switch { RF.Real => "real", RF.Fake => "fake", _ => null };
-    private static RF StrToRf(string? s) => s switch { "real" => RF.Real, "fake" => RF.Fake, _ => RF.None };
-    private static string? TypeToStr(FloorType v) => v switch { FloorType.Inferno => "inferno", FloorType.Tsunami => "tsunami", _ => null };
-    private static FloorType StrToType(string? s) => s switch { "inferno" => FloorType.Inferno, "tsunami" => FloorType.Tsunami, _ => FloorType.None };
 
     private async Task SendAsync(JsonObject obj)
     {
@@ -275,6 +268,7 @@ public sealed class SessionClient : IDisposable
     public void Leave()
     {
         _desiredRoom = null;
+        _password = null;
         CancelCurrentConnection();
         RoomId = null;
         ConnectedCount = 1;

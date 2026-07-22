@@ -24,12 +24,12 @@ public sealed class Plugin : IDalamudPlugin
     private readonly ConfigWindow _configWindow;
     private readonly KefkaSaysWindow _kefkaWindow;
     private readonly PullHistoryWindow _historyWindow;
-    private readonly SessionClient _session;
+    private readonly SessionClient<MechState> _session;
 
     public Plugin()
     {
         _configuration = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
-        _session = new SessionClient(Log, _configuration);
+        _session = new SessionClient<MechState>(Log, _configuration, new MechState());
         _kefkaWindow = new KefkaSaysWindow(_session, new GameIcons(DataManager, TextureProvider));
         _configWindow = new ConfigWindow(_configuration, () => PluginInterface.SavePluginConfig(_configuration));
         _historyWindow = new PullHistoryWindow(_session, _kefkaWindow);
@@ -95,7 +95,7 @@ public sealed class Plugin : IDalamudPlugin
 
     // Lets a call be fired from the command line (macro/hotkey friendly)
     // exactly as if the matching button in the window had been clicked:
-    // same toggle-off-on-repeat semantics, same PushState()/PushReset(). No
+    // same toggle-off-on-repeat semantics, same PushState() calls. No
     // subcommand carries a GCO index (1 or 2) since there's no clean way to
     // express "which one" in a macro without hardcoding pull order, so gco
     // instead targets whichever slot isn't resolved yet on the relevant axis
@@ -147,9 +147,15 @@ public sealed class Plugin : IDalamudPlugin
                 break;
 
             case "reset":
-                s.Reset();
-                _session.PushReset();
+            {
+                var snapshot = s.Reset();
+                _session.PushState(payload =>
+                {
+                    payload["clearDebuffs"] = true;
+                    if (snapshot is not null) payload["historySnapshot"] = MechState.SerializeSnapshot(snapshot);
+                });
                 break;
+            }
 
             default:
                 ReportInvalidCommand($"XIV Raid Tools: unrecognized command '{trimmed}'. {HelpText}");

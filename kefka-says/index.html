@@ -156,7 +156,7 @@ body.icon-mode .btn[data-icon] .btn-icon { display: flex; align-items: center; j
   color: var(--text-label);
   margin-bottom: 10px;
 }
-.session-row { display: flex; align-items: center; gap: 8px; }
+.session-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .room-input {
   background: var(--btn-bg); border: 1px solid var(--border);
   color: var(--text); font-size: 13px; font-family: inherit;
@@ -165,6 +165,14 @@ body.icon-mode .btn[data-icon] .btn-icon { display: flex; align-items: center; j
 }
 .room-input:focus { border-color: #383870; }
 .room-input::placeholder { color: var(--text-dim); text-transform: none; letter-spacing: 0; }
+.room-password-input {
+  background: var(--btn-bg); border: 1px solid var(--border);
+  color: var(--text); font-size: 13px; font-family: inherit;
+  padding: 10px 12px; border-radius: 6px; width: 180px; outline: none;
+}
+.room-password-input:focus { border-color: #383870; }
+.room-password-input::placeholder { color: var(--text-dim); }
+.room-lock { font-size: 12px; color: var(--text-dim); }
 .session-dot {
   display: inline-block; width: 7px; height: 7px; border-radius: 50%;
   background: var(--col-real); flex-shrink: 0;
@@ -181,6 +189,21 @@ body.icon-mode .btn[data-icon] .btn-icon { display: flex; align-items: center; j
 .room-code:hover .room-copy-hint { color: var(--col-real); }
 .session-info { font-size: 13px; color: var(--text-dim); display: flex; align-items: center; gap: 6px; }
 .room-count { font-size: 12px; color: var(--text-dim); }
+.ready-check-banner {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--col-accel);
+  background: var(--sel-accel-bg);
+  font-size: 13px;
+  font-weight: 600;
+}
+.ready-check-banner.all-ready { border-color: var(--col-real); background: var(--sel-real-bg); }
+.ready-check-banner.timed-out { border-color: var(--col-fake); background: var(--sel-fake-bg); }
+.ready-check-actions { margin-left: auto; display: flex; gap: 8px; }
 .option-row {
   display: flex; align-items: center; gap: 8px;
   margin-top: 12px; padding-top: 12px;
@@ -350,22 +373,38 @@ body.icon-mode .btn[data-icon] .btn-icon { display: flex; align-items: center; j
   <div class="session-card">
     <div class="section-label">Session</div>
     <div id="sbar-idle" class="session-row">
-      <button class="btn" onclick="createSession()">Create</button>
+      <button class="btn" onclick="Session.createSession()">Create</button>
       <input id="room-input" class="room-input" type="text" maxlength="4" placeholder="Room code"
-             spellcheck="false" onkeydown="if(event.key==='Enter')joinSessionFromInput()">
-      <button class="btn" onclick="joinSessionFromInput()">Join</button>
+             spellcheck="false" onkeydown="if(event.key==='Enter')Session.joinSessionFromInput()">
+      <input id="room-password-input" class="room-password-input" type="password" placeholder="Password (optional)"
+             spellcheck="false" onkeydown="if(event.key==='Enter')Session.joinSessionFromInput()">
+      <button class="btn" onclick="Session.joinSessionFromInput()">Join</button>
     </div>
     <div id="sbar-active" class="session-row" style="display:none;">
       <span class="session-dot"></span>
       <span class="session-info">
         Room:
-        <span class="room-code" onclick="copyRoom()">
+        <span class="room-code" onclick="Session.copyRoom()">
           <span id="room-code-val"></span><span class="room-copy-hint">· Click to copy</span>
         </span>
         <span id="room-count" class="room-count"></span>
+        <span id="room-lock" class="room-lock" style="display:none;">🔒 Password protected</span>
       </span>
       <span id="copy-confirm" style="display:none;font-size:12px;color:var(--col-real);margin-left:4px;">Link copied!</span>
-      <button class="btn" onclick="leaveSession()" style="margin-left:auto;">Leave</button>
+      <button class="btn" onclick="Session.startReadyCheck()" style="margin-left:auto;">Ready Check</button>
+      <button class="btn" onclick="Session.leaveSession()">Leave</button>
+    </div>
+    <div id="sbar-reconnecting" class="session-row" style="display:none;">
+      <span class="session-dot" style="background:var(--col-accel);"></span>
+      <span class="session-info">Reconnecting to <span id="reconnecting-room"></span>&hellip;</span>
+      <button class="btn" onclick="Session.leaveSession()" style="margin-left:auto;">Give up</button>
+    </div>
+    <div id="ready-check-banner" class="ready-check-banner">
+      <span id="ready-check-count"></span>
+      <span id="ready-check-actions" class="ready-check-actions">
+        <button id="ready-check-btn" class="btn" onclick="Session.ackReady()">I'm Ready</button>
+        <button class="btn" onclick="Session.cancelReadyCheck()">Cancel</button>
+      </span>
     </div>
     <label class="option-row">
       <input type="checkbox" id="enforce-order-cb" onchange="toggleEnforceOrder()">
@@ -561,6 +600,7 @@ body.icon-mode .btn[data-icon] .btn-icon { display: flex; align-items: center; j
 <script src="icons/floor-aoe.js"></script>
 <script src="icons/thunder-blizzard.js"></script>
 <script src="icons/buttons.js"></script>
+<script src="session.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

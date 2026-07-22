@@ -11,10 +11,10 @@ namespace XIVRaidToolsPlugin.Windows;
 // its own scrollbar for free once PullHistory grows past the window height.
 public sealed class PullHistoryWindow : Window
 {
-    private readonly SessionClient _session;
+    private readonly SessionClient<MechState> _session;
     private readonly KefkaSaysWindow _anchor;
 
-    public PullHistoryWindow(SessionClient session, KefkaSaysWindow anchor) : base("Pull History##XrtHistory")
+    public PullHistoryWindow(SessionClient<MechState> session, KefkaSaysWindow anchor) : base("Pull History##XrtHistory")
     {
         _session = session;
         _anchor = anchor;
