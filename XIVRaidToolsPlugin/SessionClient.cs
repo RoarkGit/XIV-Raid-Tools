@@ -57,6 +57,12 @@ public sealed class SessionClient : IDisposable
     public bool Connected => _ws?.State == WebSocketState.Open;
     public MechState State { get; } = new();
 
+    // Server broadcasts this whenever room membership changes (join/leave) —
+    // see server/index.js's broadcastCount. Starts at 1 (just yourself)
+    // rather than 0 so there's never a flash of "0 connected" before the
+    // first broadcast arrives.
+    public int ConnectedCount { get; private set; } = 1;
+
     public event Action? StateChanged;
 
     public SessionClient(IPluginLog log, Configuration config)
@@ -174,6 +180,9 @@ public sealed class SessionClient : IDisposable
                 _reconnectAttempt = 0;
                 SetStatus(SessionStatus.Active);
                 break;
+            case "count" when msg["count"] is { } count:
+                ConnectedCount = count.GetValue<int>();
+                break;
             case "state" when msg["state"]?.AsObject() is { } state:
                 _applyingRemote = true;
                 ApplyRemote(state);
@@ -268,6 +277,7 @@ public sealed class SessionClient : IDisposable
         _desiredRoom = null;
         CancelCurrentConnection();
         RoomId = null;
+        ConnectedCount = 1;
         SetStatus(SessionStatus.Idle);
     }
 

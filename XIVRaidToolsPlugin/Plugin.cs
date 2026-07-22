@@ -46,10 +46,11 @@ public sealed class Plugin : IDalamudPlugin
             HelpMessage = "Open XIV Raid Tools, or fire a call as if its button were clicked.\n"
                 + "  /xrt kefka\n"
                 + "    gco [real|fake|water|lightning|bomb]\n"
+                + "    gco1|gco2 [real|fake|water|lightning|bomb]\n"
                 + "    <tsunami|inferno|thunder|blizzard> [real|fake]\n"
                 + "    reset\n"
                 + "  /xrt config\n"
-                + "gco/tsunami/inferno commands assume order of occurrence (first gco call sets GCO1, second sets GCO2; same for tsunami/inferno and Floor AOE #1/#2).",
+                + "Bare gco/tsunami/inferno commands assume order of occurrence (first call sets GCO1/Floor AOE #1, second sets GCO2/Floor AOE #2). Use gco1/gco2 to target one explicitly instead.",
         });
 
         PluginInterface.UiBuilder.Draw += _windowSystem.Draw;
@@ -119,6 +120,14 @@ public sealed class Plugin : IDalamudPlugin
                 if (!HandleGco(arg1)) return;
                 break;
 
+            case "gco1":
+                if (!HandleGcoExplicit(1, arg1)) return;
+                break;
+
+            case "gco2":
+                if (!HandleGcoExplicit(2, arg1)) return;
+                break;
+
             case "tsunami" when arg1 is "real" or "fake":
                 HandleFloor(FloorType.Tsunami, ParseRf(arg1));
                 break;
@@ -177,13 +186,11 @@ public sealed class Plugin : IDalamudPlugin
                 var gco = s.G1Rf == RF.None ? 1 : s.G2Rf == RF.None ? 2 : 0;
                 if (gco == 0)
                 {
-                    ReportInvalidCommand("XIV Raid Tools: both GCO casts are already called, reset first.");
+                    ReportInvalidCommand("XIV Raid Tools: both GCO casts are already called, reset first. "
+                        + "Use gco1/gco2 to target a specific one directly instead.");
                     return false;
                 }
-                var v = ParseRf(arg);
-                if (gco == 1) ToggleRf(ref s.G1Rf, v); else ToggleRf(ref s.G2Rf, v);
-                _session.PushState();
-                return true;
+                return ApplyGcoRf(gco, arg);
             }
 
             case "water" or "lightning" or "bomb":
@@ -191,23 +198,60 @@ public sealed class Plugin : IDalamudPlugin
                 var gco = s.G1Pos == Pos.None && !s.G1Accel ? 1 : s.G2Pos == Pos.None && !s.G2Accel ? 2 : 0;
                 if (gco == 0)
                 {
-                    ReportInvalidCommand("XIV Raid Tools: both GCO debuffs are already assigned, reset first.");
+                    ReportInvalidCommand("XIV Raid Tools: both GCO debuffs are already assigned, reset first. "
+                        + "Use gco1/gco2 to target a specific one directly instead.");
                     return false;
                 }
-                switch (arg)
-                {
-                    case "water": s.SetPos(gco, Pos.Water); break;
-                    case "lightning": s.SetPos(gco, Pos.Lightning); break;
-                    case "bomb": s.ToggleAccel(gco); break;
-                }
-                _session.PushState();
-                return true;
+                return ApplyGcoDebuff(gco, arg);
             }
 
             default:
                 ReportInvalidCommand("XIV Raid Tools: usage is /xrt kefka gco [real|fake|water|lightning|bomb]");
                 return false;
         }
+    }
+
+    // "gco1"/"gco2" bypass the order-of-occurrence inference entirely and
+    // target that exact GCO, for when a macro needs to be explicit (e.g.
+    // firing GCO2 first because that's how a particular pull went) rather
+    // than relying on "whichever isn't resolved yet". No "already resolved"
+    // guard here — toggling a specific, known slot is always well-defined.
+    private bool HandleGcoExplicit(int gco, string arg) => arg switch
+    {
+        "real" or "fake" => ApplyGcoRf(gco, arg),
+        "water" or "lightning" or "bomb" => ApplyGcoDebuff(gco, arg),
+        _ => ReportGcoUsage(),
+    };
+
+    private bool ReportGcoUsage()
+    {
+        ReportInvalidCommand("XIV Raid Tools: usage is /xrt kefka gco1|gco2 [real|fake|water|lightning|bomb]");
+        return false;
+    }
+
+    private bool ApplyGcoRf(int gco, string arg)
+    {
+        var s = _session.State;
+        var v = ParseRf(arg);
+        if (gco == 1) ToggleRf(ref s.G1Rf, v); else ToggleRf(ref s.G2Rf, v);
+        _session.PushState();
+        return true;
+    }
+
+    // No PushState() — g1pos/g2pos/g1accel/g2accel are never in
+    // BuildSharedState's payload (personal, unsynced fields), so pushing
+    // after only one of these changing would send the room's already-synced
+    // fields unchanged. Matches KefkaSaysWindow's DebuffsRow buttons.
+    private bool ApplyGcoDebuff(int gco, string arg)
+    {
+        var s = _session.State;
+        switch (arg)
+        {
+            case "water": s.SetPos(gco, Pos.Water); break;
+            case "lightning": s.SetPos(gco, Pos.Lightning); break;
+            case "bomb": s.ToggleAccel(gco); break;
+        }
+        return true;
     }
 
     // "tsunami"/"inferno" name a floor shape, not a slot (1 or 2) — Floor AOE

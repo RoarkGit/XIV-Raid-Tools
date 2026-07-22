@@ -199,6 +199,8 @@ public sealed class KefkaSaysWindow : Window
                 ImGui.AlignTextToFramePadding();
                 ImGui.TextColored(Theme.Text, $"Room: {_session.RoomId}");
                 ImGui.SameLine();
+                ImGui.TextColored(Theme.TextDim, $"· {_session.ConnectedCount} connected");
+                ImGui.SameLine();
                 if (ImGui.Button("Leave")) _session.Leave();
                 break;
 
@@ -511,15 +513,20 @@ public sealed class KefkaSaysWindow : Window
         var gap = Sc(ButtonGap);
         var width = RowButtonWidth(3, gap);
 
+        // No PushState() here — g1pos/g2pos/g1accel/g2accel are never in
+        // BuildSharedState's payload (see its comment), so a push after only
+        // one of these changing would just resend the room's already-synced
+        // fields unchanged. The local UI updates regardless, since ImGui
+        // redraws from MechState directly every frame.
         ImGui.BeginGroup();
         if (IconAccentButton($"g{gco}water", _gameIcons.Water ?? Icons.Droplet, pos == Pos.Water, AccentTag.Water, posDisabled, width, height, "Compressed Water", isRealIcon: _gameIcons.Water is not null))
-            { s.SetPos(gco, Pos.Water); _session.PushState(); }
+            s.SetPos(gco, Pos.Water);
         ImGui.SameLine(0, gap);
         if (IconAccentButton($"g{gco}lightning", _gameIcons.Lightning ?? Icons.Thunder, pos == Pos.Lightning, AccentTag.Lightning, posDisabled, width, height, "Forked Lightning", isRealIcon: _gameIcons.Lightning is not null))
-            { s.SetPos(gco, Pos.Lightning); _session.PushState(); }
+            s.SetPos(gco, Pos.Lightning);
         ImGui.SameLine(0, gap);
         if (IconAccentButton($"g{gco}accel", _gameIcons.AccelBomb ?? Icons.Bomb, accel, AccentTag.Accel, accelDisabled, width, height, "Acceleration Bomb", isRealIcon: _gameIcons.AccelBomb is not null))
-            { s.ToggleAccel(gco); _session.PushState(); }
+            s.ToggleAccel(gco);
         ImGui.EndGroup();
         if (showTooltipWhen && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
             ImGui.SetTooltip(tooltip);

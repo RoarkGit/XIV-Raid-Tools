@@ -86,7 +86,12 @@ available from the command line too, for a macro or hotkey:
   Targeting works the same way, but keyed off whichever target's debuff
   is not yet assigned; once one target's debuff is set, the other is
   already derived by the pairing rule, so only one call is ever needed
-  per pull.
+  per pull. Note that these fields are never synced to the room (personal,
+  like clicking the button yourself), so this only affects your own window.
+- `/xrt kefka gco1 [real|fake|water|lightning|bomb]` / `/xrt kefka gco2
+  [...]`: same as `gco`, but targets that exact Grand Cross Omega target
+  directly instead of inferring which one from order of occurrence, for
+  when a macro needs to be explicit about which target it means.
 - `/xrt kefka tsunami real|fake` / `/xrt kefka inferno real|fake`: toggles
   a Floor AOE's Cast row. The first call of either name claims Floor AOE
   #1 for that shape (Floor AOE #2 is always the other shape); a later call
