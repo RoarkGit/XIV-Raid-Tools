@@ -12,6 +12,16 @@ function genRoomId() {
   return id;
 }
 
+// Broadcast (not just to the client that just joined/left) since everyone
+// already in the room needs their own "N connected" display to update too.
+function broadcastCount(id) {
+  if (!rooms.has(id)) return;
+  const payload = JSON.stringify({ type: 'count', count: rooms.get(id).size });
+  for (const client of rooms.get(id)) {
+    if (client.readyState === WebSocket.OPEN) client.send(payload);
+  }
+}
+
 const server = http.createServer((_req, res) => { res.writeHead(200); res.end('OK'); });
 const wss = new WebSocketServer({ server });
 
@@ -27,6 +37,7 @@ wss.on('connection', (ws) => {
       rooms.set(id, new Set([ws]));
       ws._room = id;
       ws.send(JSON.stringify({ type: 'created', room: id }));
+      broadcastCount(id);
 
     } else if (msg.type === 'join') {
       const id = (msg.room || '').toUpperCase();
@@ -38,6 +49,7 @@ wss.on('connection', (ws) => {
       rooms.get(id).add(ws);
       ws._room = id;
       ws.send(JSON.stringify({ type: 'joined', room: id }));
+      broadcastCount(id);
 
     } else if (msg.type === 'state') {
       if (!ws._room || !rooms.has(ws._room)) return;
@@ -52,6 +64,7 @@ wss.on('connection', (ws) => {
     if (ws._room && rooms.has(ws._room)) {
       rooms.get(ws._room).delete(ws);
       if (rooms.get(ws._room).size === 0) rooms.delete(ws._room);
+      else broadcastCount(ws._room);
     }
   });
 });

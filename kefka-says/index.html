@@ -180,6 +180,7 @@ body.icon-mode .btn[data-icon] .btn-icon { display: flex; align-items: center; j
 .room-copy-hint { font-size: 12px; font-weight: 400; letter-spacing: 0; color: var(--text-dim); margin-left: 4px; }
 .room-code:hover .room-copy-hint { color: var(--col-real); }
 .session-info { font-size: 13px; color: var(--text-dim); display: flex; align-items: center; gap: 6px; }
+.room-count { font-size: 12px; color: var(--text-dim); }
 .option-row {
   display: flex; align-items: center; gap: 8px;
   margin-top: 12px; padding-top: 12px;
@@ -361,6 +362,7 @@ body.icon-mode .btn[data-icon] .btn-icon { display: flex; align-items: center; j
         <span class="room-code" onclick="copyRoom()">
           <span id="room-code-val"></span><span class="room-copy-hint">· Click to copy</span>
         </span>
+        <span id="room-count" class="room-count"></span>
       </span>
       <span id="copy-confirm" style="display:none;font-size:12px;color:var(--col-real);margin-left:4px;">Link copied!</span>
       <button class="btn" onclick="leaveSession()" style="margin-left:auto;">Leave</button>

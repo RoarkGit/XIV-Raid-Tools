@@ -368,7 +368,7 @@ function applyShared(state) {
 
 let _applying = false;
 let _ws = null;
-const P = { sessionId: null, status: 'idle' };
+const P = { sessionId: null, status: 'idle', count: 1 };
 
 function genRoomId() {
   return Array.from({length: 4}, () => String.fromCharCode(65 + Math.floor(Math.random() * 26))).join('');
@@ -385,6 +385,9 @@ function connectWS(onopen) {
       P.sessionId = msg.room;
       P.status = 'active';
       renderSession();
+    } else if (msg.type === 'count') {
+      P.count = msg.count;
+      renderSession();
     } else if (msg.type === 'state') {
       _applying = true;
       applyShared(msg.state);
@@ -400,6 +403,7 @@ function connectWS(onopen) {
     if (P.status === 'active') {
       P.sessionId = null;
       P.status = 'idle';
+      P.count = 1;
       _ws = null;
       renderSession();
     }
@@ -425,7 +429,7 @@ function syncState() {
 
 function leaveSession() {
   if (_ws) { _ws.onclose = null; _ws.close(); _ws = null; }
-  P.sessionId = null; P.status = 'idle';
+  P.sessionId = null; P.status = 'idle'; P.count = 1;
   renderSession();
 }
 
@@ -443,6 +447,7 @@ function renderSession() {
   document.getElementById('sbar-idle').style.display   = P.status === 'idle'   ? '' : 'none';
   document.getElementById('sbar-active').style.display = P.status === 'active' ? '' : 'none';
   if (P.sessionId) document.getElementById('room-code-val').textContent = P.sessionId;
+  document.getElementById('room-count').textContent = `· ${P.count} connected`;
 }
 
 // ── Icon mode ────────────────────────────────────────────────────────────
