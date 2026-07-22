@@ -27,7 +27,7 @@ public sealed class ConfigWindow : Window
     {
         ImGui.TextWrapped("Relay server URL. Leave blank to use the default public relay.");
         ImGui.SetNextItemWidth(-1);
-        if (ImGui.InputTextWithHint("##relayurl", SessionClient.DefaultWsUrl, ref _relayUrlInput, 256))
+        if (ImGui.InputTextWithHint("##relayurl", SessionDefaults.DefaultWsUrl, ref _relayUrlInput, 256))
         {
             _config.RelayUrlOverride = _relayUrlInput;
             _save();

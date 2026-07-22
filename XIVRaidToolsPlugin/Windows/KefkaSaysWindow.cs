@@ -14,9 +14,10 @@ public sealed class KefkaSaysWindow : Window
     // to make the status column's total height match the input column's.
     private const float StatusCardGap = 7f;
 
-    private readonly SessionClient _session;
+    private readonly SessionClient<MechState> _session;
     private readonly GameIcons _gameIcons;
     private string _roomInput = "";
+    private string _passwordInput = "";
 
     // Assigned by Plugin right after both windows are constructed (a
     // constructor parameter would need each to already exist for the
@@ -37,7 +38,7 @@ public sealed class KefkaSaysWindow : Window
     private readonly float _uiScale = 1f;
     private float Sc(float px) => px * _uiScale;
 
-    public KefkaSaysWindow(SessionClient session, GameIcons gameIcons) : base("Kefka Says##KefkaSaysMain")
+    public KefkaSaysWindow(SessionClient<MechState> session, GameIcons gameIcons) : base("Kefka Says##KefkaSaysMain")
     {
         _session = session;
         _gameIcons = gameIcons;
@@ -200,6 +201,11 @@ public sealed class KefkaSaysWindow : Window
                 ImGui.TextColored(Theme.Text, $"Room: {_session.RoomId}");
                 ImGui.SameLine();
                 ImGui.TextColored(Theme.TextDim, $"· {_session.ConnectedCount} connected");
+                if (_session.HasPassword)
+                {
+                    ImGui.SameLine();
+                    ImGui.TextColored(Theme.TextDim, "· Password protected");
+                }
                 ImGui.SameLine();
                 if (ImGui.Button("Leave")) _session.Leave();
                 break;
@@ -220,7 +226,12 @@ public sealed class KefkaSaysWindow : Window
 
             case SessionStatus.Idle:
             default:
-                if (ImGui.Button("Create session")) _ = _session.CreateAsync();
+                // Same field Join reads below — typing a code and hitting
+                // Create claims that exact code (if free) instead of a
+                // random one, matching the webapp's createSession(). _roomInput
+                // is a persistent field, already current by the time this
+                // click fires even though the button is drawn first.
+                if (ImGui.Button("Create session")) _ = _session.CreateAsync(_passwordInput, _roomInput);
                 ImGui.SameLine();
                 ImGui.SetNextItemWidth(60);
                 // EnterReturnsTrue mirrors the webapp's room-input onkeydown
@@ -229,7 +240,14 @@ public sealed class KefkaSaysWindow : Window
                     ImGuiInputTextFlags.CharsUppercase | ImGuiInputTextFlags.EnterReturnsTrue);
                 ImGui.SameLine();
                 var joinClicked = ImGui.Button("Join");
-                if ((enterPressed || joinClicked) && _roomInput.Length == 4) _ = _session.JoinAsync(_roomInput);
+                if ((enterPressed || joinClicked) && _roomInput.Length == 4) _ = _session.JoinAsync(_roomInput, _passwordInput);
+                ImGui.SameLine();
+                ImGui.SetNextItemWidth(150); // wide enough that the "Password (optional)" hint isn't clipped
+                // Same field feeds both Create (sets a new room's password)
+                // and Join (supplies one to check against) — the two actions
+                // never happen at once, so there's no ambiguity in reusing it.
+                ImGui.InputTextWithHint("##roompassword", "Password (optional)", ref _passwordInput, 64,
+                    ImGuiInputTextFlags.Password);
                 break;
         }
 
@@ -261,11 +279,18 @@ public sealed class KefkaSaysWindow : Window
         ImGui.PopStyleColor();
         if (reset)
         {
-            s.Reset();
-            // PushReset, not PushState — Reset needs every other client to
-            // also clear its own local-only debuff selections, which a plain
-            // state sync never touches (see MechState.ClearLocalDebuffs).
-            _session.PushReset();
+            // Reset needs two things a plain PushState() call wouldn't carry
+            // on its own: tell every OTHER client to clear its own local-only
+            // debuff selections too (see MechState.ClearLocalDebuffs), and
+            // give them their own copy of the PullHistory entry Reset() just
+            // took (s.Reset()'s return value — null if there was nothing to
+            // save). Both piggyback via PushState's configureExtra.
+            var snapshot = s.Reset();
+            _session.PushState(payload =>
+            {
+                payload["clearDebuffs"] = true;
+                if (snapshot is not null) payload["historySnapshot"] = MechState.SerializeSnapshot(snapshot);
+            });
         }
     }
 

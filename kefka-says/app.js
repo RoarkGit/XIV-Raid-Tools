@@ -111,16 +111,30 @@ document.addEventListener('click', (e) => {
   if (wrap && !wrap.contains(e.target)) closeHistoryPanel();
 });
 
+// Piggybacked onto the next Session.syncState() push (see syncState() below)
+// so every other client applies the same clear/history entry to their own
+// copy — previously only the client that clicked Reset ever got a
+// pullHistory entry, since the outgoing state message only carried the
+// post-reset (empty) fields, never what was actually cleared.
 let _pendingClearDebuffs = false;
+let _pendingHistorySnapshot = null;
 function reset() {
   if (!isStateEmpty()) {
-    pullHistory.unshift(snapshotState());
+    const snap = snapshotState();
+    pullHistory.unshift(snap);
     if (pullHistory.length > PULL_HISTORY_MAX) pullHistory.length = PULL_HISTORY_MAX;
     updateHistoryBadge();
+    _pendingHistorySnapshot = snap;
   }
   for (const k of Object.keys(S)) { if (k !== 'enforceOrder') S[k] = k.endsWith('accel') ? false : null; }
   _pendingClearDebuffs = true;
   render();
+}
+
+function recordRemoteHistorySnapshot(snap) {
+  pullHistory.unshift(snap);
+  if (pullHistory.length > PULL_HISTORY_MAX) pullHistory.length = PULL_HISTORY_MAX;
+  updateHistoryBadge();
 }
 
 function toggleEnforceOrder() {
@@ -344,17 +358,15 @@ function render() {
     S.blizzardRF ? (S.blizzardRF === 'real' ? 'c-blz-real'    : 'c-blz-fake')    : null,
     S.blizzardRF ? (S.blizzardRF === 'real' ? 'REAL'          : 'FAKE')          : null);
 
-  if (!_applying) syncState();
+  if (!Session.isApplyingRemote()) syncState();
 }
 
-// ── Session (WebSocket) ────────────────────────────────────────────────────
+// ── Session wiring ───────────────────────────────────────────────────────
+// The room/relay/ready-check machinery itself lives in session.js (shared
+// with any future webapp tool); this is just Kefka's own plug into it —
+// which fields sync, and how to apply/re-emit them.
 // Mechanic-wide fields only; player-specific debuffs (g1/g2 pos/accel) stay local
 const SYNC_KEYS = ['g1rf', 'g2rf', 'it1type', 'it1rf', 'it2rf', 'thunderRF', 'blizzardRF', 'enforceOrder'];
-
-// TODO: after Railway deploy, replace the production URL with your actual deployment URL
-const WS_URL = (!location.hostname || location.hostname === 'localhost' || location.hostname === '127.0.0.1')
-  ? 'ws://localhost:3000'
-  : 'wss://xiv-raid-tools-production.up.railway.app';
 
 function sharedState() {
   const out = {};
@@ -366,88 +378,21 @@ function applyShared(state) {
   for (const k of SYNC_KEYS) { if (k in state) S[k] = state[k]; }
 }
 
-let _applying = false;
-let _ws = null;
-const P = { sessionId: null, status: 'idle', count: 1 };
-
-function genRoomId() {
-  return Array.from({length: 4}, () => String.fromCharCode(65 + Math.floor(Math.random() * 26))).join('');
-}
-
-function connectWS(onopen) {
-  if (_ws) { _ws.onclose = null; _ws.close(); }
-  _ws = new WebSocket(WS_URL);
-  _ws.onopen = onopen;
-  _ws.onmessage = (e) => {
-    let msg;
-    try { msg = JSON.parse(e.data); } catch { return; }
-    if (msg.type === 'created' || msg.type === 'joined') {
-      P.sessionId = msg.room;
-      P.status = 'active';
-      renderSession();
-    } else if (msg.type === 'count') {
-      P.count = msg.count;
-      renderSession();
-    } else if (msg.type === 'state') {
-      _applying = true;
-      applyShared(msg.state);
-      if (msg.state.clearDebuffs) clearLocalDebuffs();
-      render();
-      _applying = false;
-    } else if (msg.type === 'error') {
-      alert('Session error: ' + msg.msg);
-      leaveSession();
-    }
-  };
-  _ws.onclose = () => {
-    if (P.status === 'active') {
-      P.sessionId = null;
-      P.status = 'idle';
-      P.count = 1;
-      _ws = null;
-      renderSession();
-    }
-  };
-}
-
-function createSession() {
-  connectWS(() => _ws.send(JSON.stringify({ type: 'create' })));
-}
-
-function joinSessionFromInput() {
-  const val = document.getElementById('room-input').value.trim().toUpperCase();
-  if (val.length !== 4) return;
-  connectWS(() => _ws.send(JSON.stringify({ type: 'join', room: val })));
-}
-
+// Thin wrapper so render()'s tail call stays a plain syncState() — attaches
+// whatever Reset() left pending (see reset()'s comment) before handing off
+// to Session.syncState(), which sends sharedState() plus this extra.
 function syncState() {
-  if (!_ws || _ws.readyState !== WebSocket.OPEN) return;
-  const state = sharedState();
-  if (_pendingClearDebuffs) { state.clearDebuffs = true; _pendingClearDebuffs = false; }
-  _ws.send(JSON.stringify({ type: 'state', state }));
+  const extra = {};
+  if (_pendingClearDebuffs) { extra.clearDebuffs = true; _pendingClearDebuffs = false; }
+  if (_pendingHistorySnapshot) { extra.historySnapshot = _pendingHistorySnapshot; _pendingHistorySnapshot = null; }
+  Session.syncState(extra);
 }
 
-function leaveSession() {
-  if (_ws) { _ws.onclose = null; _ws.close(); _ws = null; }
-  P.sessionId = null; P.status = 'idle'; P.count = 1;
-  renderSession();
-}
-
-function copyRoom() {
-  if (!P.sessionId) return;
-  const url = location.href.split('?')[0] + '?room=' + P.sessionId;
-  navigator.clipboard.writeText(url).then(() => {
-    const confirm = document.getElementById('copy-confirm');
-    confirm.style.display = 'inline';
-    setTimeout(() => { confirm.style.display = 'none'; }, 1800);
-  }).catch(() => {});
-}
-
-function renderSession() {
-  document.getElementById('sbar-idle').style.display   = P.status === 'idle'   ? '' : 'none';
-  document.getElementById('sbar-active').style.display = P.status === 'active' ? '' : 'none';
-  if (P.sessionId) document.getElementById('room-code-val').textContent = P.sessionId;
-  document.getElementById('room-count').textContent = `· ${P.count} connected`;
+function onStateReceived(state) {
+  applyShared(state);
+  if (state.clearDebuffs) clearLocalDebuffs();
+  if (state.historySnapshot) recordRemoteHistorySnapshot(state.historySnapshot);
+  render();
 }
 
 // ── Icon mode ────────────────────────────────────────────────────────────
@@ -538,9 +483,7 @@ const _iconModeOn = localStorage.getItem(ICON_MODE_KEY) === '1';
 document.getElementById('icon-mode-cb').checked = _iconModeOn;
 setIconMode(_iconModeOn);
 
-// Auto-join if URL contains ?room=XXXX, then clear param so refresh starts fresh
-const _roomParam = new URLSearchParams(location.search).get('room');
-if (_roomParam && /^[A-Za-z]{4}$/.test(_roomParam)) {
-  connectWS(() => _ws.send(JSON.stringify({ type: 'join', room: _roomParam.toUpperCase() })));
-  history.replaceState(null, '', location.pathname);
-}
+// Registers this tool's fields with the shared session layer, and (as part
+// of that) auto-joins if the URL carries ?room=XXXX from a shared link —
+// see session.js's init().
+Session.init({ getSharedState: sharedState, onStateReceived });
