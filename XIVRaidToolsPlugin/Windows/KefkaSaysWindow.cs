@@ -10,7 +10,7 @@ public sealed class KefkaSaysWindow : Window
     private const float ButtonGap = 5f;
 
     // Gap between the status column's three GroupCards (Gaze/Floor AOE/
-    // Thunder & Blizzard) — tuned in-game via a temporary debug +/- control
+    // Thunder & Blizzard) - tuned in-game via a temporary debug +/- control
     // to make the status column's total height match the input column's.
     private const float StatusCardGap = 7f;
 
@@ -32,7 +32,7 @@ public sealed class KefkaSaysWindow : Window
     public Vector2 CurrentPos { get; private set; }
     public Vector2 CurrentSize { get; private set; }
 
-    // Fixed at 1 — the webapp uses fixed pixel sizes, so we don't scale with
+    // Fixed at 1 - the webapp uses fixed pixel sizes, so we don't scale with
     // the window. Kept (rather than deleting Sc/ScaledText) so the layout
     // dimensions stay written as design pixels in one place.
     private readonly float _uiScale = 1f;
@@ -45,15 +45,15 @@ public sealed class KefkaSaysWindow : Window
         // Plain resizable window with a generous initial size (remembered
         // after the user's first manual resize via FirstUseEver). The two
         // columns matching each other doesn't need the window itself to be
-        // fixed-size — TableSetColumnIndex measures both columns' true
+        // fixed-size - TableSetColumnIndex measures both columns' true
         // height within the same frame regardless of window size, so
         // resizing doesn't reintroduce the scale/cache feedback loop from
         // earlier attempts. AlwaysAutoResize was considered, but it fights
-        // the table's stretchy (fill-available-width) columns — content that
+        // the table's stretchy (fill-available-width) columns - content that
         // sizes itself to "available width" has no natural width for
         // auto-resize to converge on, risking a collapsed or unstable size.
-        // Smaller default now that padding/gaps/icons are tightened —
-        // in-game HUD real estate is precious, this was too big before.
+        // Smaller default now that padding/gaps/icons are tightened, since
+        // in-game HUD real estate is precious and this was too big before.
         Size = new Vector2(680, 560);
         SizeCondition = ImGuiCond.FirstUseEver;
     }
@@ -69,7 +69,7 @@ public sealed class KefkaSaysWindow : Window
         // The webapp does NOT scale with window size: every font, icon and
         // column is a fixed pixel size, capped by `.page { max-width: 980px;
         // margin: 0 auto }` and centered, with a scrollbar/stack when the
-        // viewport is smaller. So we do the same — fixed sizes (Sc() is now a
+        // viewport is smaller. So we do the same - fixed sizes (Sc() is now a
         // no-op at scale 1), content capped and centered, ImGui's own
         // scrollbar handling small windows. Trying to auto-scale everything
         // to the window created a scale↔content-height feedback loop that
@@ -101,7 +101,7 @@ public sealed class KefkaSaysWindow : Window
             // is wider: the "Debuffs" row's 3 buttons, or the Thunder/
             // Blizzard panes side by side (each needs room for its own
             // "THUNDER"/"BLIZZARD" header plus 2 buttons plus the pane's own
-            // padding) — Thunder & Blizzard turned out to need more room
+            // padding) - Thunder & Blizzard turned out to need more room
             // than 3 plain buttons did once each got its own bordered pane.
             var contentW = ImGui.GetContentRegionAvail().X;
             var btnSize = ImGui.GetFrameHeight() + Sc(18f);
@@ -122,14 +122,14 @@ public sealed class KefkaSaysWindow : Window
                 ImGui.TableSetupColumn("status", ImGuiTableColumnFlags.WidthStretch);
                 ImGui.TableNextRow();
 
-                // .main-card align-items:stretch — both columns the same
+                // .main-card align-items:stretch - both columns the same
                 // height, computed with ZERO cross-frame guessing: draw the
                 // status column FIRST (out of visual order, via
                 // TableSetColumnIndex) so its true height is known within
                 // THIS frame, then draw input and pad whichever one is
                 // shorter against the other's now-known height. The previous
                 // approach cached last frame's height to decide this frame's
-                // padding — a one-frame lag that was a plausible source of
+                // padding - a one-frame lag that was a plausible source of
                 // the mismatches we kept seeing. This has no lag: both
                 // heights are real numbers from the current frame before any
                 // padding decision is made.
@@ -139,7 +139,7 @@ public sealed class KefkaSaysWindow : Window
                 var statusH = ImGui.GetCursorPosY() - sy0;
                 // Recorded explicitly rather than trusting TableSetColumnIndex
                 // to restore column 1's cursor to wherever DrawStatusColumn
-                // left it when we jump back below — a persistent few-pixel
+                // left it when we jump back below - a persistent few-pixel
                 // mismatch survived several rounds of size tuning, which
                 // pointed at this assumption rather than the sizes themselves.
                 var statusEndPos = ImGui.GetCursorScreenPos();
@@ -170,7 +170,7 @@ public sealed class KefkaSaysWindow : Window
     }
 
     // Left column. Section order matches the HTML exactly: GCO#1, Floor
-    // AOE#1, GCO#2, Floor AOE#2, Thunder & Blizzard — app.js interleaves
+    // AOE#1, GCO#2, Floor AOE#2, Thunder & Blizzard - app.js interleaves
     // these rather than grouping both GCOs together. Drawn at natural height;
     // the caller (Draw) appends a trailing spacer if this column comes up
     // shorter than the status column, so both end at the same Y.
@@ -188,7 +188,7 @@ public sealed class KefkaSaysWindow : Window
     }
 
     // Session controls get their own row, with the enforce-order checkbox
-    // and History/Reset on a second row below — the Idle row alone now
+    // and History/Reset on a second row below - the Idle row alone now
     // packs Create/room code/Join/password into one line, so folding
     // everything else onto the end of it (as a single row used to) left no
     // room to breathe and started clipping (see the screenshot that
@@ -208,7 +208,7 @@ public sealed class KefkaSaysWindow : Window
                     ImGui.SameLine();
                     ImGui.TextColored(Theme.TextDim, "· Password protected");
                     // Not sensitive enough to hide from someone already in
-                    // the room — the share link already carries it in plain
+                    // the room - the share link already carries it in plain
                     // text (see copyRoom() in kefka-says's session.js).
                     if (ImGui.IsItemHovered()) ImGui.SetTooltip($"Password: {_session.Password}");
                 }
@@ -232,7 +232,7 @@ public sealed class KefkaSaysWindow : Window
 
             case SessionStatus.Idle:
             default:
-                // One action instead of separate Create/Join buttons —
+                // One action instead of separate Create/Join buttons:
                 // leave the code blank for a fresh room, or type one to join
                 // it (falling back to creating that exact code if it
                 // doesn't exist yet). Matches the webapp's single Join
@@ -241,16 +241,16 @@ public sealed class KefkaSaysWindow : Window
                 // the button is drawn first.
                 // Join pinned first (left), where the old Create button
                 // used to sit, rather than sandwiched between the two
-                // inputs — matches the webapp's layout.
+                // inputs - matches the webapp's layout.
                 var joinClicked = ImGui.Button("Join");
                 // No room on the webapp's session-card for a standing hint
-                // here — a hover tooltip carries the same "leave it blank"
+                // here - a hover tooltip carries the same "leave it blank"
                 // note instead (see index.html's .session-hint).
                 if (ImGui.IsItemHovered()) ImGui.SetTooltip("Leave the code blank to create a room with a random one.");
                 ImGui.SameLine();
                 ImGui.SetNextItemWidth(60);
                 // EnterReturnsTrue mirrors the webapp's room-input onkeydown
-                // handler (index.html) — Enter joins the same as clicking Join.
+                // handler (index.html) - Enter joins the same as clicking Join.
                 var enterPressed = ImGui.InputTextWithHint("##room", "Code", ref _roomInput, 4,
                     ImGuiInputTextFlags.CharsUppercase | ImGuiInputTextFlags.EnterReturnsTrue);
                 if (ImGui.IsItemHovered()) ImGui.SetTooltip("Leave the code blank to create a room with a random one.");
@@ -294,7 +294,7 @@ public sealed class KefkaSaysWindow : Window
             // on its own: tell every OTHER client to clear its own local-only
             // debuff selections too (see MechState.ClearLocalDebuffs), and
             // give them their own copy of the PullHistory entry Reset() just
-            // took (s.Reset()'s return value — null if there was nothing to
+            // took (s.Reset()'s return value - null if there was nothing to
             // save). Both piggyback via PushState's configureExtra.
             var snapshot = s.Reset();
             _session.PushState(payload =>
@@ -308,7 +308,7 @@ public sealed class KefkaSaysWindow : Window
     // Position/accel mutations go through MechState.SetPos/ToggleAccel so the
     // cross-player exclusion rules (see MechState.cs) apply the same way
     // they do in app.js's setPos()/togAccel(). Row disabling below mirrors
-    // app.js's g1Order/g1PosOrder (enforceOrder) exactly — only GCO#2 is
+    // app.js's g1Order/g1PosOrder (enforceOrder) exactly - only GCO#2 is
     // ever gated, GCO#1 never is.
     private void DrawGrandCross(int gco)
     {
@@ -346,7 +346,7 @@ public sealed class KefkaSaysWindow : Window
         {
             var field = g == 1 ? "g1rf" : "g2rf";
             var cur = g == 1 ? s.G1Rf : s.G2Rf;
-            // Someone else's call for this same value just arrived — treat
+            // Someone else's call for this same value just arrived - treat
             // our own (independently in-flight) click as confirming it
             // rather than un-calling it. See MechState.WasJustSetRemotely.
             if (cur == v && s.WasJustSetRemotely(field)) return;
@@ -361,7 +361,7 @@ public sealed class KefkaSaysWindow : Window
         var s = _session.State;
         SectionLabel($"Floor AOE #{n}");
 
-        // Real/Fake first, Type second — swapped from app.js's original
+        // Real/Fake first, Type second - swapped from app.js's original
         // Type-then-Cast order (index.html was updated to match, since this
         // was a deliberate ordering choice, not just a plugin-side quirk).
         if (n == 1)
@@ -375,13 +375,13 @@ public sealed class KefkaSaysWindow : Window
             CastRow("floor2cast", s.It2Rf, AccentTag.Real, it1Order, "Set Floor AOE #1 Type first", SetIt2Rf);
 
             // Floor AOE #2's Type row is permanently disabled in app.js too
-            // (<button disabled> in the HTML) — it only ever displays the
+            // (<button disabled> in the HTML) - it only ever displays the
             // derived It2Type, never an independent choice.
             TypeRow("floor2type", s.It2Type, true, null);
         }
 
         // Each guards against the same click-race as SetRf above before
-        // toggling off — see MechState.WasJustSetRemotely.
+        // toggling off - see MechState.WasJustSetRemotely.
         void SetType(FloorType v)
         {
             if (s.It1Type == v && s.WasJustSetRemotely("it1type")) return;
@@ -403,7 +403,7 @@ public sealed class KefkaSaysWindow : Window
     }
 
     // Two small bordered panes side by side (reusing the status column's
-    // GroupCard for the box/header — nothing about it is status-column
+    // GroupCard for the box/header - nothing about it is status-column
     // specific) instead of one "Thunder & Blizzard" section with "Thunder"/
     // "Blizzard" row labels: each pane's own header already says which
     // element it is, so a per-row label would just repeat it. Needs an
@@ -420,13 +420,13 @@ public sealed class KefkaSaysWindow : Window
             ImGui.TableNextRow();
 
             // Real is tagged with the element's own color (thunder/blizzard),
-            // Fake is always tagged red — matches app.js's
+            // Fake is always tagged red - matches app.js's
             // btnCls('thr',...,'thunder') vs btnCls('thf',...,'fake') asymmetry.
             ImGui.TableNextColumn();
             GroupCard("Thunder", () => CastRow("thunder", s.ThunderRf, AccentTag.Thunder, false, null,
                 v =>
                 {
-                    // Same click-race guard as SetRf — see MechState.WasJustSetRemotely.
+                    // Same click-race guard as SetRf - see MechState.WasJustSetRemotely.
                     if (s.ThunderRf == v && s.WasJustSetRemotely("thunderRF")) return;
                     s.ThunderRf = s.ThunderRf == v ? RF.None : v;
                     _session.PushState();
@@ -466,18 +466,18 @@ public sealed class KefkaSaysWindow : Window
 
     // Width to give each of n icon buttons in a row so they stretch to fill
     // whatever's left after the row label (flex:1-equivalent), instead of a
-    // fixed small square that leaves the rest of the row's width empty —
-    // this was the actual leftover "sparse space" after the input column
+    // fixed small square that leaves the rest of the row's width empty.
+    // This was the actual leftover "sparse space" after the input column
     // itself got sized correctly.
     private float RowButtonWidth(int n, float gap) => (ImGui.GetContentRegionAvail().X - gap * (n - 1)) / n;
 
-    // Compact icon-only button — the space-saving swap for what used to be
+    // Compact icon-only button - the space-saving swap for what used to be
     // full-width "Real"/"Fake"/"Water"/"Lightning"/"Accel Bomb" text buttons.
     // width/height are independent so a row can stretch button WIDTH to fill
     // the row while the icon itself (sized off height) doesn't get stretched
     // into an odd elongated shape. Tinted per Theme.ButtonAccent when
     // selected like AccentButton, with an optional identifying tooltip
-    // (skipped while disabled — the row-level ordering tooltip takes over)
+    // (skipped while disabled - the row-level ordering tooltip takes over)
     // that also previews the icon at full size, since a ~20px button icon
     // for a debuff most players have never seen at that size is hard to
     // recognize on its own.
@@ -494,11 +494,11 @@ public sealed class KefkaSaysWindow : Window
         ImGui.PopStyleColor(3);
 
         // Real game-icon textures (a single flat image, no internal overlap
-        // possible) use alpha for the dim/bright distinction — see
+        // possible) use alpha for the dim/bright distinction - see
         // GameIcons.Draw. Vector Icons.* can't: several of them draw
         // overlapping primitives (Stack's circle over its arrow tips,
         // Droplet/Flame's circle over a triangle), and tinting the whole
-        // icon at alpha<1 makes each overlapping pixel blend twice — a
+        // icon at alpha<1 makes each overlapping pixel blend twice - a
         // visible seam where the shapes cross. So vector icons stay fully
         // opaque and get dim vs. bright entirely from fg's color choice
         // (TextDim vs. the accent) instead.
@@ -520,7 +520,7 @@ public sealed class KefkaSaysWindow : Window
             ImGui.BeginTooltip();
             const float previewSize = 64f;
             // The tooltip's width is whatever its widest line ends up being
-            // — usually the identifying text ("Acceleration Bomb"), which is
+            // - usually the identifying text ("Acceleration Bomb"), which is
             // wider than the 64px icon. Center both the icon and the text
             // against that shared width instead of leaving the icon flush
             // left of a wider text line below it.
@@ -531,8 +531,8 @@ public sealed class KefkaSaysWindow : Window
             ImGui.SetCursorPosX(startX + MathF.Max(0, (contentWidth - previewSize) / 2f));
             var previewOrigin = ImGui.GetCursorScreenPos();
             // Preview always renders at full brightness/its natural accent
-            // color regardless of the button's current selected state —
-            // it's a reference image, not a live reflection of selection.
+            // color regardless of the button's current selected state.
+            // It's a reference image, not a live reflection of selection.
             var previewColor = Theme.U32(Theme.ButtonAccent(tag).Fg, 1f);
             icon(ImGui.GetWindowDrawList(), previewOrigin, previewSize, previewColor);
             ImGui.Dummy(new Vector2(previewSize, previewSize));
@@ -544,7 +544,7 @@ public sealed class KefkaSaysWindow : Window
         return clicked;
     }
 
-    // Real/Fake as check/X icon buttons, no row label at all — GCO and Floor
+    // Real/Fake as check/X icon buttons, no row label at all - GCO and Floor
     // AOE's section header ("Grand Cross Omega #1"/"Floor AOE #1") and
     // Thunder/Blizzard's own pane header (see DrawThunderBlizzard) already
     // give enough context that a "Cast" label added nothing but width
@@ -569,10 +569,10 @@ public sealed class KefkaSaysWindow : Window
     }
 
     // "Debuffs" row as Compressed Water / Forked Lightning / Acceleration
-    // Bomb icon buttons — no row label, same reasoning as CastRow's. The
+    // Bomb icon buttons - no row label, same reasoning as CastRow's. The
     // actual debuff names live in hover tooltips instead. Water/Lightning
     // share posDisabled, Accel Bomb has its own accelDisabled (mutual
-    // exclusion with a sibling button vs. the enforceOrder gate — see
+    // exclusion with a sibling button vs. the enforceOrder gate - see
     // MechState.cs); showTooltipWhen/tooltip is the enforceOrder-only
     // row-level message.
     private void DebuffsRow(int gco, Pos pos, bool accel, bool posDisabled, bool accelDisabled, bool showTooltipWhen, string tooltip)
@@ -582,7 +582,7 @@ public sealed class KefkaSaysWindow : Window
         var gap = Sc(ButtonGap);
         var width = RowButtonWidth(3, gap);
 
-        // No PushState() here — g1pos/g2pos/g1accel/g2accel are never in
+        // No PushState() here - g1pos/g2pos/g1accel/g2accel are never in
         // BuildSharedState's payload (see its comment), so a push after only
         // one of these changing would just resend the room's already-synced
         // fields unchanged. The local UI updates regardless, since ImGui
@@ -603,7 +603,7 @@ public sealed class KefkaSaysWindow : Window
 
     // Floor AOE's "Type" row as Flame/Wave icon buttons instead of
     // "Inferno"/"Tsunami" text. onSet is null for Floor AOE #2's row, which
-    // is always disabled/display-only (see DrawFloorAoeSection) — the click
+    // is always disabled/display-only (see DrawFloorAoeSection) - the click
     // handler doesn't matter there since IconAccentButton's own disabled
     // state already blocks the click, this just keeps the caller from having
     // to pass a no-op lambda.
@@ -625,11 +625,11 @@ public sealed class KefkaSaysWindow : Window
     // Mirrors .col-status: a "My Status" section label, the Position/Accel
     // Bomb pair side by side (.scards-top's 2-col grid), then the Gaze /
     // Floor AOE / Thunder & Blizzard groups, each a labeled block of
-    // labeled sub-rows (.tb-row) — same grouping as the HTML, not a flat
+    // labeled sub-rows (.tb-row) - same grouping as the HTML, not a flat
     // list of cards.
     private const float TbNameWidth = 48f;
     private const float CardRounding = 6f;
-    // GroupCard's interior left/right inset — named for the status column
+    // GroupCard's interior left/right inset - named for the status column
     // originally, but also used by DrawThunderBlizzard's panes now.
     private const float CardPadX = 8f;
 
@@ -642,7 +642,7 @@ public sealed class KefkaSaysWindow : Window
         SectionLabel("My Status");
         ImGui.Spacing();
 
-        // .scards-top is a grid-template-columns: 1fr 1fr — both cards get an
+        // .scards-top is a grid-template-columns: 1fr 1fr - both cards get an
         // equal fixed-width cell. Drawing them as actual bordered .scard
         // boxes (rather than bare centered content floating in the column) is
         // what makes the centering read as intentional instead of two icons
@@ -667,7 +667,7 @@ public sealed class KefkaSaysWindow : Window
 
         // GroupCard's own trailing Dummy already advances the cursor by
         // style.ItemSpacing.Y automatically (ImGui adds that after every
-        // item, including Dummy) — a plain extra Dummy(StatusCardGap) here
+        // item, including Dummy) - a plain extra Dummy(StatusCardGap) here
         // would stack ON TOP of that. SetExactGap cancels the automatic
         // spacing out first, so StatusCardGap is the WHOLE gap between boxes.
         SetExactGap(StatusCardGap);
@@ -704,7 +704,7 @@ public sealed class KefkaSaysWindow : Window
     }
 
     // real/fake icons differ (thunderFake/blizzardFake add the dim + red
-    // strike-through per icons.js) — passing one Icon for both states, as an
+    // strike-through per icons.js) - passing one Icon for both states, as an
     // earlier pass here did, silently dropped that distinction.
     private void ElementRow(string n, RF rf, Icon real, Icon fake, AccentTag tag) => TbRow(n,
         rf == RF.Fake ? fake : real, rf != RF.None, tag,
@@ -713,10 +713,10 @@ public sealed class KefkaSaysWindow : Window
     // A bordered .scard box (bg #0f0f24 + border, rounded) drawn around a
     // section label and its rows. Height is unknown until the rows are laid
     // out, so the content is drawn into draw-list channel 1 first, then the
-    // background rect is painted behind it in channel 0 and merged — the
+    // background rect is painted behind it in channel 0 and merged - the
     // standard ImGui trick for "box that fits its content".
     // Overrides the automatic ItemSpacing.Y that ImGui adds after the
-    // previous item so the gap before the next item is exactly Sc(gap) —
+    // previous item so the gap before the next item is exactly Sc(gap), with
     // no hidden baseline getting added on top. See the call sites in
     // DrawStatusColumn for why this matters over a plain Dummy.
     private void SetExactGap(float gap)
@@ -744,7 +744,7 @@ public sealed class KefkaSaysWindow : Window
         // box's right edge with no matching right-side margin, touching or
         // slightly overflowing the border. Starting the table's cursor
         // already padX right of p0, with a column exactly (width - 2*padX)
-        // wide, gives an equal inset on both sides — same table-for-width-
+        // wide, gives an equal inset on both sides - same table-for-width-
         // constraint technique already used for the main 2-column layout and
         // the Thunder/Blizzard pane split.
         ImGui.SetCursorScreenPos(new Vector2(p0.X + padX, p0.Y + padTop));
@@ -766,7 +766,7 @@ public sealed class KefkaSaysWindow : Window
         dl.AddRect(p0, p1, Theme.U32(Theme.Border), Sc(CardRounding));
         dl.ChannelsMerge();
 
-        // No trailing ImGui.Spacing() here — ImGui already inserts one
+        // No trailing ImGui.Spacing() here - ImGui already inserts one
         // ItemSpacing.Y after the Dummy automatically before the next
         // GroupCard; an explicit Spacing() on top of that was doubling the
         // gap between the Gaze/Floor AOE/Thunder & Blizzard boxes.
@@ -776,7 +776,7 @@ public sealed class KefkaSaysWindow : Window
 
     // A .scard box for the top pair: label / icon / value stacked and
     // horizontally centered. Height is fixed (known content), so the box is
-    // drawn first and content placed on top — no channel split needed.
+    // drawn first and content placed on top - no channel split needed.
     private void Card(float width, string label, Icon icon, bool active, AccentTag tag, string value)
     {
         var iconSize = Sc(40f);
@@ -808,13 +808,13 @@ public sealed class KefkaSaysWindow : Window
     }
 
     // .tb-icon ~34px, .tb-n right-aligned in 56px slot, .tb-val 16px, .tb-sub
-    // body-size — vertically centered against the icon (.tb-row's
+    // body-size - vertically centered against the icon (.tb-row's
     // align-items:center) AND the whole [name|icon|value] block horizontally
     // centered within the card interior (.tb-row's justify-content:center).
     // Fully screen-positioned so it lays out correctly regardless of the
     // enclosing GroupCard's indent.
     // reserveSub reserves the sub-text line's width/height whether or not
-    // `sub` is actually populated THIS frame — Floor AOE's hint ("Stack →
+    // `sub` is actually populated THIS frame - Floor AOE's hint ("Stack →
     // get out"/"stay in") only appears once both a type and real/fake are
     // set, so sizing off `sub is null` made the Floor AOE box visibly grow
     // the instant that hint appeared. Rows that can never have a sub line
@@ -825,7 +825,7 @@ public sealed class KefkaSaysWindow : Window
         var iconSize = Sc(29f);
         var gap = Sc(8f);
         var nameSlot = Sc(TbNameWidth);
-        // .tb-val is 48px, .tb-valcol (sub present) is 120px — a fixed value
+        // .tb-val is 48px, .tb-valcol (sub present) is 120px - a fixed value
         // column keeps every row in a group sharing one left edge so they
         // read as a column even while the block as a whole is centered.
         var valueColWidth = Sc(hasSubSlot ? 110f : 44f);
@@ -848,18 +848,18 @@ public sealed class KefkaSaysWindow : Window
         var interiorWidth = ImGui.GetContentRegionAvail().X - Sc(CardPadX);
         var blockX = rowStart.X + MathF.Max(0, (interiorWidth - block) / 2f);
 
-        // name — right-aligned in its slot, vertically centered
+        // name - right-aligned in its slot, vertically centered
         ImGui.SetWindowFontScale(_uiScale * LabelScale);
         var nWidth = ImGui.CalcTextSize(n).X;
         ImGui.SetWindowFontScale(_uiScale);
         ImGui.SetCursorScreenPos(new Vector2(blockX + MathF.Max(0, nameSlot - nWidth), rowStart.Y + (rowH - nameH) / 2f));
         ScaledText(n, LabelScale, Theme.TextDim);
 
-        // icon — vertically centered
+        // icon - vertically centered
         var iconX = blockX + nameSlot + gap;
         icon(dl, new Vector2(iconX, rowStart.Y + (rowH - iconSize) / 2f), iconSize, iconColor);
 
-        // value (+ optional sub) — vertically centered block
+        // value (+ optional sub) - vertically centered block
         var textX = iconX + iconSize + gap;
         var blockY = rowStart.Y + (rowH - blockH) / 2f;
         ImGui.SetCursorScreenPos(new Vector2(textX, blockY));
@@ -870,7 +870,7 @@ public sealed class KefkaSaysWindow : Window
             ImGui.TextColored(Theme.TextDim, sub);
         }
 
-        // No trailing ImGui.Spacing() here either — same reasoning as
+        // No trailing ImGui.Spacing() here either - same reasoning as
         // GroupCard's: it was doubling the gap between "1st GCO"/"2nd GCO"
         // and similar row pairs.
         ImGui.SetCursorScreenPos(rowStart);
@@ -878,7 +878,7 @@ public sealed class KefkaSaysWindow : Window
     }
 
     // Draws text horizontally centered on centerX at the given screen Y, at
-    // the given font scale — used for the stacked .scard content.
+    // the given font scale - used for the stacked .scard content.
     private void CenteredText(string text, float scale, Vector4 color, float centerX, float screenY)
     {
         ImGui.SetWindowFontScale(_uiScale * scale);

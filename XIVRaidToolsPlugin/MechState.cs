@@ -12,8 +12,8 @@ public enum Pos { None, Water, Lightning }
 public enum FloorType { None, Inferno, Tsunami }
 
 // A snapshot of one pull's mechanic state, taken right before Reset() clears
-// it — lets a misclick be undone, or an earlier pull's calls be reviewed.
-// Local-only (like G1Pos/G2Pos/G1Accel/G2Accel — see ClearLocalDebuffs),
+// it - lets a misclick be undone, or an earlier pull's calls be reviewed.
+// Local-only (like G1Pos/G2Pos/G1Accel/G2Accel - see ClearLocalDebuffs),
 // not synced: each client's own perspective, including its own personal
 // debuff pick, not something to push onto teammates.
 public sealed record PullSnapshot(
@@ -23,7 +23,7 @@ public sealed record PullSnapshot(
     FloorType It1Type, RF It1Rf, RF It2Rf,
     RF ThunderRf, RF BlizzardRf)
 {
-    // One-line summary for the pull history popup — only mentions fields
+    // One-line summary for the pull history popup - only mentions fields
     // that were actually set, so an early-pull-wipe snapshot (say, only GCO1
     // called before a reset) doesn't read as a wall of "None"s.
     public string Describe()
@@ -56,7 +56,7 @@ public sealed class MechState : ISyncedState
     private const int MaxPullHistory = 20;
 
     // Most recent first. Only ever grows on a non-empty Reset() (see
-    // IsEmpty) — spamming Reset on an already-cleared state shouldn't fill
+    // IsEmpty) - spamming Reset on an already-cleared state shouldn't fill
     // this with blank entries.
     public List<PullSnapshot> PullHistory { get; } = new();
 
@@ -110,7 +110,7 @@ public sealed class MechState : ISyncedState
             : (rf == RF.Real ? "donut" : "circle");
     }
 
-    // setPos(gco, v) — Grand Cross Omega pairs the two targets: exactly one
+    // setPos(gco, v) - Grand Cross Omega pairs the two targets: exactly one
     // gets a positional debuff (water/lightning), the other gets Accel Bomb.
     // Assigning a position to one player forces the other into accel and
     // clears their position.
@@ -128,7 +128,7 @@ public sealed class MechState : ISyncedState
         }
     }
 
-    // togAccel(gco) — at most one player has Accel Bomb at a time; taking it
+    // togAccel(gco) - at most one player has Accel Bomb at a time; taking it
     // clears your own position debuff.
     public void ToggleAccel(int gco)
     {
@@ -144,7 +144,7 @@ public sealed class MechState : ISyncedState
         }
     }
 
-    // Whether every mechanic-wide and personal field is at its default —
+    // Whether every mechanic-wide and personal field is at its default.
     // EnforceOrder deliberately excluded, it's a standing preference, not
     // per-pull state. Used to skip saving a PullHistory entry for a reset
     // that had nothing to lose (e.g. a second accidental click on Reset).
@@ -153,12 +153,12 @@ public sealed class MechState : ISyncedState
         ThunderRf == RF.None && BlizzardRf == RF.None && It1Type == FloorType.None &&
         G1Pos == Pos.None && G2Pos == Pos.None && !G1Accel && !G2Accel;
 
-    // reset() — clears everything except enforceOrder; accel fields go back
+    // reset() - clears everything except enforceOrder; accel fields go back
     // to false, everything else back to None. Snapshots the pre-reset state
     // into PullHistory first so it can be restored later (see PullSnapshot).
     // Returns that snapshot (or null if there was nothing to save) so the
     // caller can also push it to the rest of the room via SerializeSnapshot
-    // (see KefkaSaysWindow's Reset handling) — otherwise only the client
+    // (see KefkaSaysWindow's Reset handling) - otherwise only the client
     // that actually hit Reset would ever get a PullHistory entry for this
     // pull.
     public PullSnapshot? Reset()
@@ -179,7 +179,7 @@ public sealed class MechState : ISyncedState
     }
 
     // Records a PullHistory entry for a Reset() that happened on ANOTHER
-    // client — see ApplyRemote below. Same insert-at-front-and-trim as
+    // client - see ApplyRemote below. Same insert-at-front-and-trim as
     // Reset() takes for its own snapshot above, just without touching this
     // client's live mechanic fields.
     public void AddRemoteHistorySnapshot(PullSnapshot snap)
@@ -189,7 +189,7 @@ public sealed class MechState : ISyncedState
             PullHistory.RemoveRange(MaxPullHistory, PullHistory.Count - MaxPullHistory);
     }
 
-    // Repopulates every field from a past snapshot — the inverse of the copy
+    // Repopulates every field from a past snapshot - the inverse of the copy
     // Reset() takes. Callers still need to PushState() afterward to sync the
     // shared fields to the room, same as any other mutation.
     public void RestoreSnapshot(PullSnapshot snap)
@@ -201,7 +201,7 @@ public sealed class MechState : ISyncedState
     }
 
     // G1Pos/G2Pos/G1Accel/G2Accel are deliberately NOT part of Serialize's
-    // synced fields below — each player's own Grand Cross Omega debuff
+    // synced fields below - each player's own Grand Cross Omega debuff
     // assignment is personal, not a shared raid-wide fact like g1rf/g2rf, so
     // one client's selection must never overwrite another's. But that means
     // a normal state sync from another client's Reset() never touched these
@@ -209,7 +209,7 @@ public sealed class MechState : ISyncedState
     // Water/Lightning/Accel Bomb still showing selected. The Reset button's
     // handler attaches a "clearDebuffs" flag onto that same push specifically
     // for this reason (see KefkaSaysWindow's Reset handling and ApplyRemote
-    // below) — it's still each client clearing its own local fields, never
+    // below) - it's still each client clearing its own local fields, never
     // one client's values pushed onto another.
     public void ClearLocalDebuffs()
     {
@@ -219,7 +219,7 @@ public sealed class MechState : ISyncedState
 
     // ── ISyncedState ─────────────────────────────────────────────────────
     // Mechanic-wide fields only; player-specific debuffs (G1/G2 Pos/Accel)
-    // stay local — mirrors app.js's SYNC_KEYS/sharedState() exactly.
+    // stay local - mirrors app.js's SYNC_KEYS/sharedState() exactly.
     public JsonObject Serialize() => new()
     {
         ["g1rf"] = RfToStr(G1Rf),
@@ -233,7 +233,7 @@ public sealed class MechState : ISyncedState
     };
 
     // When a field was last set by an INCOMING remote update (see
-    // ApplyRemote) — consulted by KefkaSaysWindow's click handlers before
+    // ApplyRemote) - consulted by KefkaSaysWindow's click handlers before
     // toggling a synced field off, to stop a race where two people click
     // the same correct call at nearly the same instant: if A's click's
     // broadcast reaches B right before B's own (independent, already
@@ -248,7 +248,7 @@ public sealed class MechState : ISyncedState
 
     public void ApplyRemote(JsonObject state)
     {
-        // Must check ContainsKey, not `state["k"] is {}` — JsonObject's indexer
+        // Must check ContainsKey, not `state["k"] is {}` - JsonObject's indexer
         // returns null both for an absent key AND a key explicitly set to JSON
         // null, so an `is {}` check can't tell "not sent" apart from "cleared".
         // app.js's applyShared avoids this with `if (k in state)`; we need the
@@ -263,20 +263,20 @@ public sealed class MechState : ISyncedState
         if (state.ContainsKey("blizzardRF")) { BlizzardRf = StrToRf(state["blizzardRF"]?.GetValue<string>()); _remoteSetAt["blizzardRF"] = now; }
         if (state.ContainsKey("enforceOrder")) EnforceOrder = state["enforceOrder"]?.GetValue<bool>() ?? false;
 
-        // See ClearLocalDebuffs's comment — clears THIS client's own
+        // See ClearLocalDebuffs's comment - clears THIS client's own
         // local-only debuff fields in response to another client's Reset,
         // never applies someone else's specific selection to us.
         if (state.ContainsKey("clearDebuffs")) ClearLocalDebuffs();
 
         // A PullHistory entry from whoever's Reset() this state message
-        // came from — see SerializeSnapshot and KefkaSaysWindow's Reset
+        // came from - see SerializeSnapshot and KefkaSaysWindow's Reset
         // handling (the configureExtra callback that attaches it).
         if (state["historySnapshot"]?.AsObject() is { } snap)
             AddRemoteHistorySnapshot(DeserializeSnapshot(snap));
     }
 
     // Mirrors app.js's snapshotState()'s field set exactly (including the
-    // personal g1pos/g2pos/g1accel/g2accel fields — a history entry is a
+    // personal g1pos/g2pos/g1accel/g2accel fields - a history entry is a
     // record of what actually happened that pull, not a live-synced field,
     // so it's fine for it to carry the resetting player's own debuff pick
     // the way Serialize() above never would).
@@ -307,7 +307,7 @@ public sealed class MechState : ISyncedState
     private static RF StrToRf(string? s) => s switch { "real" => RF.Real, "fake" => RF.Fake, _ => RF.None };
     private static string? TypeToStr(FloorType v) => v switch { FloorType.Inferno => "inferno", FloorType.Tsunami => "tsunami", _ => null };
     private static FloorType StrToType(string? s) => s switch { "inferno" => FloorType.Inferno, "tsunami" => FloorType.Tsunami, _ => FloorType.None };
-    // Only needed for PullSnapshot (de)serialization — Pos is never part of
+    // Only needed for PullSnapshot (de)serialization - Pos is never part of
     // Serialize/ApplyRemote's live-synced fields (see their comments).
     private static string? PosToStr(Pos v) => v switch { Pos.Water => "water", Pos.Lightning => "lightning", _ => null };
     private static Pos StrToPos(string? s) => s switch { "water" => Pos.Water, "lightning" => Pos.Lightning, _ => Pos.None };

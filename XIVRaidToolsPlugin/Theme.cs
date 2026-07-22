@@ -4,7 +4,7 @@ using Dalamud.Bindings.ImGui;
 namespace XIVRaidToolsPlugin;
 
 // Started as a 1:1 port of the :root custom properties in kefka-says/
-// index.html, then brightened across the board — the webapp's palette is
+// index.html, then brightened across the board - the webapp's palette is
 // tuned for a browser tab you look at deliberately; an in-game overlay is
 // glanced at over a busy 3D scene mid-fight, so it needs more contrast/
 // legibility than "matches the website exactly" was giving it.
@@ -19,7 +19,7 @@ public static class Theme
     // Solid (alpha-1) stand-in for "dim vector icon placeholder" that used
     // to be Text at ~0.2 alpha. Several vector icons (Stack's circle over
     // its arrow tips, Droplet/Flame's circle over a triangle) draw
-    // overlapping primitives — tinting the whole icon at alpha<1 makes each
+    // overlapping primitives - tinting the whole icon at alpha<1 makes each
     // overlapping pixel blend twice, a visible seam where shapes cross. A
     // real game-icon texture has no internal overlap (one flat image), so it
     // can safely use alpha for dimming; vector icons can't and need a solid
@@ -28,7 +28,7 @@ public static class Theme
     public static readonly Vector4 CardBg = Rgb(0x1c, 0x1c, 0x38); // .scard background
 
     // index.html's :root --bg/--surface, used unbrightened here (unlike the
-    // rest of this palette) — a large flat fill reads fine at the webapp's
+    // rest of this palette) - a large flat fill reads fine at the webapp's
     // own darkness, it's small foreground details that needed the boost.
     public static readonly Vector4 WindowBg = Rgb(0x0a, 0x0a, 0x18); // --bg (body background)
     public static readonly Vector4 TitleBgActive = Rgb(0x13, 0x13, 0x2a); // --surface, focused title bar
@@ -64,7 +64,7 @@ public static class Theme
 
     // Mirrors the .btn.on-<tag> CSS rules: (foreground, tinted background).
     // Tags with no CSS background rule of their own (spread/stack/still/
-    // move/in/out) are card-only accents — never used as a button state.
+    // move/in/out) are card-only accents - never used as a button state.
     public static (Vector4 Fg, Vector4 Bg) ButtonAccent(AccentTag tag) => tag switch
     {
         AccentTag.Real => (Real, SelRealBg),
@@ -98,7 +98,7 @@ public static class Theme
         ImGui.ColorConvertFloat4ToU32(color with { W = color.W * alpha });
 
     // Window chrome (background fill + title bar) is drawn by ImGui.Begin()
-    // itself, before a window's own Draw() runs — so unlike the
+    // itself, before a window's own Draw() runs - so unlike the
     // Button/Text/Border colors each window pushes inside Draw(), these have
     // to be pushed in PreDraw() (before Begin) to take effect, and popped in
     // PostDraw(). Call both from every window for a consistent look.

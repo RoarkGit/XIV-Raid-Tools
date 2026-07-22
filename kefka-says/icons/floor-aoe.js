@@ -1,4 +1,4 @@
-// Floor AOE status icons — filled circle (stack -> get out) vs donut (stack -> stay in).
+// Floor AOE status icons - filled circle (stack -> get out) vs donut (stack -> stay in).
 window.IC = window.IC || {};
 
 IC.circle = `<svg viewBox="0 0 44 44">

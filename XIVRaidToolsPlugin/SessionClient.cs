@@ -11,7 +11,7 @@ namespace XIVRaidToolsPlugin;
 
 public enum SessionStatus { Idle, Connecting, Active, Reconnecting }
 
-// Non-generic home for members that don't depend on TState — referencing a
+// Non-generic home for members that don't depend on TState - referencing a
 // generic class's static members from outside always needs a type argument
 // (SessionClient<MechState>.Foo), which is awkward for something like a
 // config UI's URL hint that has nothing to do with any tool's state shape.
@@ -30,10 +30,10 @@ public static class SessionDefaults
 //
 // Generic over TState (an ISyncedState) so this connection/room/reconnect
 // machinery is reusable by a future second Dalamud tool with its own state
-// shape — this class itself has zero knowledge of Kefka Says' mechanic
+// shape - this class itself has zero knowledge of Kefka Says' mechanic
 // fields, all of that lives in MechState now (see ISyncedState.cs).
 //
-// Unlike the webapp (which doesn't retry a dropped connection — you just
+// Unlike the webapp (which doesn't retry a dropped connection - you just
 // reload the page), this reconnects with backoff, since "reload the tab" has
 // no in-game equivalent and a raid-night WS blip shouldn't lose the room.
 public sealed class SessionClient<TState> : IDisposable where TState : ISyncedState
@@ -58,7 +58,7 @@ public sealed class SessionClient<TState> : IDisposable where TState : ISyncedSt
     private bool _applyingRemote;
 
     // The room we intend to stay connected to. Null means "no session
-    // wanted" (idle, or user hit Leave) — ScheduleReconnect no-ops on null.
+    // wanted" (idle, or user hit Leave) - ScheduleReconnect no-ops on null.
     // Set to the *actual* room id once a create/join response arrives, so a
     // later drop always reconnects via `join`, even for a session that
     // started with `create`.
@@ -66,12 +66,12 @@ public sealed class SessionClient<TState> : IDisposable where TState : ISyncedSt
     private int _reconnectAttempt;
 
     // Remembered for the lifetime of the session (not just the initial
-    // send) so a dropped-connection reconnect's `join` still carries it —
-    // see ReconnectAfterDelayAsync. Null/empty means "no password set".
+    // send) so a dropped-connection reconnect's `join` still carries it
+    // (see ReconnectAfterDelayAsync). Null/empty means "no password set".
     private string? _password;
 
     // Null means "use the default error handling" (fire SessionError, then
-    // Leave() — a normal user-initiated Create/Join failing). The reconnect
+    // Leave() - a normal user-initiated Create/Join failing). The reconnect
     // path overrides this per-attempt instead, since a join failing there
     // most likely means the room's gone (see ReconnectAfterDelayAsync) and
     // needs a fallback attempt, not giving up outright.
@@ -83,13 +83,13 @@ public sealed class SessionClient<TState> : IDisposable where TState : ISyncedSt
     public TState State { get; }
     public bool HasPassword => _password is not null;
     // The actual password, for a UI that wants to reveal it on demand (e.g.
-    // a hover tooltip) — not sensitive enough to warrant hiding it from
+    // a hover tooltip) - not sensitive enough to warrant hiding it from
     // someone already in the room, since a room's share link already
     // carries it in plain text anyway (see kefka-says's copyRoom()).
     public string? Password => _password;
 
-    // Server broadcasts this whenever room membership changes (join/leave) —
-    // see server/index.js's broadcastCount. Starts at 1 (just yourself)
+    // Server broadcasts this whenever room membership changes (join/leave;
+    // see server/index.js's broadcastCount). Starts at 1 (just yourself)
     // rather than 0 so there's never a flash of "0 connected" before the
     // first broadcast arrives.
     public int ConnectedCount { get; private set; } = 1;
@@ -97,7 +97,7 @@ public sealed class SessionClient<TState> : IDisposable where TState : ISyncedSt
     public event Action? StateChanged;
 
     // Fired for any server-sent {type:'error'} (wrong password, room not
-    // found, a taken custom room code, ...) — a bare Log.Warning never
+    // found, a taken custom room code, ...) - a bare Log.Warning never
     // reaches the player (see Plugin.cs's ReportInvalidCommand comment),
     // so this exists for a subscriber (Plugin.cs) to surface it in chat.
     public event Action<string>? SessionError;
@@ -110,7 +110,7 @@ public sealed class SessionClient<TState> : IDisposable where TState : ISyncedSt
     }
 
     // roomCode lets the caller claim a specific code (if free) instead of
-    // a server-assigned random one — same optional-request/server-validates
+    // a server-assigned random one - same optional-request/server-validates
     // pattern as password, see server/index.js's create handler.
     public Task CreateAsync(string? password = null, string? roomCode = null)
     {
@@ -130,10 +130,10 @@ public sealed class SessionClient<TState> : IDisposable where TState : ISyncedSt
         return OpenAsync(msg, desiredRoom: room);
     }
 
-    // One action instead of separate Create/Join — an empty room creates a
+    // One action instead of separate Create/Join - an empty room creates a
     // fresh (random-code) room, same as CreateAsync alone used to. A given
     // code tries to join it, falling back to creating that exact code only
-    // if it doesn't exist yet (not on any other error — a wrong password
+    // if it doesn't exist yet (not on any other error - a wrong password
     // shouldn't silently spin up an unrelated empty room). Mirrors
     // kefka-says/session.js's joinOrCreate().
     public Task JoinOrCreateAsync(string room, string? password = null)
@@ -163,11 +163,11 @@ public sealed class SessionClient<TState> : IDisposable where TState : ISyncedSt
 
     private async Task ConnectOnceAsync(JsonObject initial)
     {
-        // Always tear down whatever connection preceded this attempt first —
+        // Always tear down whatever connection preceded this attempt first.
         // OpenAsync already does this for a fresh Create/Join, but the
         // reconnect/recreate-fallback chain calls this directly, and the
         // server doesn't close the socket after an error response (e.g.
-        // "Room not found" — see server/index.js's join handler), so
+        // "Room not found" - see server/index.js's join handler), so
         // without this a failed join's still-open connection would leak
         // every time RecreateRoomAsync opens a new one on top of it.
         CancelCurrentConnection();
@@ -216,7 +216,7 @@ public sealed class SessionClient<TState> : IDisposable where TState : ISyncedSt
         }
         catch (OperationCanceledException)
         {
-            // Manual Leave()/Dispose() — not a drop, don't reconnect.
+            // Manual Leave()/Dispose() - not a drop, don't reconnect.
         }
         catch (Exception ex)
         {
@@ -249,7 +249,7 @@ public sealed class SessionClient<TState> : IDisposable where TState : ISyncedSt
         var msg = new JsonObject { ["type"] = "join", ["room"] = room, ["client"] = "plugin" };
         if (_password is not null) msg["password"] = _password;
         // If the room's gone (the relay process itself restarted and wiped
-        // its in-memory rooms — see server/index.js), fall back to
+        // its in-memory rooms - see server/index.js), fall back to
         // recreating it under this exact code so anyone else's own join
         // retry lands back in the same room, rather than just giving up the
         // instant a "Room not found" response comes back.
@@ -281,7 +281,7 @@ public sealed class SessionClient<TState> : IDisposable where TState : ISyncedSt
                 _desiredRoom = RoomId;
                 _reconnectAttempt = 0;
                 // hasPassword reflects whether the ROOM actually requires
-                // one, not whether we happened to send one — without this,
+                // one, not whether we happened to send one - without this,
                 // joining an unprotected room after typing a (server-ignored)
                 // password would wrongly keep HasPassword true.
                 if (msg["hasPassword"]?.GetValue<bool>() != true) _password = null;
@@ -290,7 +290,7 @@ public sealed class SessionClient<TState> : IDisposable where TState : ISyncedSt
             case "count" when msg["count"] is { } count:
                 ConnectedCount = count.GetValue<int>();
                 break;
-            // "readyCheck" is deliberately unhandled — the game already has
+            // "readyCheck" is deliberately unhandled - the game already has
             // its own ready check, so this plugin doesn't surface the
             // webapp/relay's anonymous-count version at all, even if
             // another room member (on the webapp) starts one.
@@ -309,12 +309,12 @@ public sealed class SessionClient<TState> : IDisposable where TState : ISyncedSt
         StateChanged?.Invoke();
     }
 
-    // Call after any local mutation — mirrors session.js's syncState().
+    // Call after any local mutation - mirrors session.js's syncState().
     // configureExtra lets a caller piggyback one-shot keys onto this specific
-    // push (Kefka's Reset() attaches clearDebuffs/historySnapshot this way —
+    // push (Kefka's Reset() attaches clearDebuffs/historySnapshot this way,
     // see KefkaSaysWindow's Reset handling) on top of State.Serialize()'s
     // normal synced fields, without SessionClient needing to know what those
-    // keys mean — TState.ApplyRemote is what interprets them on the
+    // keys mean - TState.ApplyRemote is what interprets them on the
     // receiving end.
     public void PushState(Action<JsonObject>? configureExtra = null)
     {

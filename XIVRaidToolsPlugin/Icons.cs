@@ -5,7 +5,7 @@ namespace XIVRaidToolsPlugin;
 
 // Vector re-draws of kefka-says/icons.js's inline SVGs onto an ImGui draw
 // list, at the same 44x44 viewBox the source SVGs use. No texture/PNG
-// pipeline needed — everything here is lines, circles, and a couple of
+// pipeline needed - everything here is lines, circles, and a couple of
 // manually-triangulated fills, scaled to whatever box the caller draws into.
 public delegate void Icon(ImDrawListPtr dl, Vector2 topLeft, float size, uint color);
 
@@ -14,10 +14,10 @@ public static class Icons
     private static Vector2 P(Vector2 origin, float s, float x, float y) => origin + new Vector2(x, y) * s;
 
     // Shaft + a 2-segment arrowhead chevron meeting at one point is a 3-way
-    // junction (branch), which can't be a single continuous path — a path is
+    // junction (branch), which can't be a single continuous path - a path is
     // a linear chain, it can't fork. The chevron's own 2 segments CAN be one
     // continuous path (no seam between them), but the shaft joining that
-    // same point is necessarily a second, separate stroke — so a small
+    // same point is necessarily a second, separate stroke - so a small
     // filled circle "cap" sits over the junction, sized to the stroke width,
     // masking whatever seam the two independently anti-aliased strokes would
     // otherwise leave right at the corner.
@@ -112,11 +112,11 @@ public static class Icons
     // Stroked zigzag rather than a filled hexagon: the previous version
     // triangulated the classic bolt silhouette into 3 manual triangles, but
     // adjoining triangle edges each anti-alias independently, leaving a
-    // visible seam through the shape — much more noticeable at the small
+    // visible seam through the shape - much more noticeable at the small
     // sizes these icons render at (button icons, ~15-20px) than it was in
     // the original at-scale mockup. This zigzag is a genuinely sequential
     // path (unlike Spread/Stack's 3-way arm junctions), so it really can be
-    // ONE continuous PathStroke — the previous version still used 3 separate
+    // ONE continuous PathStroke - the previous version still used 3 separate
     // AddLine calls despite the comment here claiming otherwise, and had the
     // exact same joint-seam bug as the fill version it replaced.
     private static void BoltPath(ImDrawListPtr dl, Vector2 o, float s, uint color, float thickness)
@@ -141,7 +141,7 @@ public static class Icons
         dl.AddLine(P(o, s, 6, 6), P(o, s, 38, 38), Theme.U32(Theme.Fake), 3.5f * s);
     }
 
-    // Inferno (flame) and Tsunami (wave) — for the compact Floor AOE #1 Type
+    // Inferno (flame) and Tsunami (wave) - for the compact Floor AOE #1 Type
     // buttons, replacing the "Inferno"/"Tsunami" text buttons. Flame reuses
     // Droplet's triangle+circle construction (simple, no seam risk) with an
     // asymmetric lean so it doesn't read as a second water drop; Wave is a
@@ -196,13 +196,13 @@ public static class Icons
         return (packedColor & 0x00FFFFFF) | ((uint)a << 24);
     }
 
-    // Not from icons.js — added for the compact icon-only Real/Fake and
+    // Not from icons.js - added for the compact icon-only Real/Fake and
     // debuff-selection buttons (no equivalent in the webapp, which has room
     // for text labels; the in-game window doesn't).
     public static void Check(ImDrawListPtr dl, Vector2 o, float size, uint color)
     {
         // One continuous path, not two separate AddLine calls meeting at
-        // (18,34) — two independent line draws can leave a visible seam/gap
+        // (18,34) - two independent line draws can leave a visible seam/gap
         // at their shared corner since each is anti-aliased on its own; a
         // single stroked path has no such joint.
         var s = size / 44f;

@@ -1,4 +1,4 @@
-// Icon-mode button glyphs — Real/Fake as check/cross. Real game debuffs
+// Icon-mode button glyphs - Real/Fake as check/cross. Real game debuffs
 // (Water/Lightning/Accel Bomb/Inferno/Tsunami) use actual icons instead
 // (see BTN_GAME_ICON in app.js), not vectors.
 window.IC = window.IC || {};

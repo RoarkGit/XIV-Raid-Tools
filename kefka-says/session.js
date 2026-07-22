@@ -1,7 +1,7 @@
 // ── Session ──────────────────────────────────────────────────────────────
 // Generic room/relay-connection layer: create/join/leave, room passwords,
 // connected count, ready check. Deliberately has NO knowledge of Kefka
-// Says' own mechanic fields (g1rf, it1type, etc.) — a tool wires itself in
+// Says' own mechanic fields (g1rf, it1type, etc.) - a tool wires itself in
 // via Session.init({ getSharedState, onStateReceived }) and everything
 // tool-specific (SYNC_KEYS, applying remote state, pull history) stays in
 // that tool's own script. This is what lets a second webapp tool reuse the
@@ -11,7 +11,7 @@
 // element IDs kefka-says/index.html does (sbar-idle, sbar-active,
 // room-code-val, room-count, room-lock, copy-confirm, room-input,
 // room-password-input, ready-check-banner, ready-check-count,
-// ready-check-actions, ready-check-btn) — any tool embedding this module
+// ready-check-actions, ready-check-btn) - any tool embedding this module
 // needs that same markup, not just the script tag.
 //
 // Speaks the same wire protocol as server/index.js and the Dalamud
@@ -26,12 +26,12 @@ const Session = (() => {
 
   let _ws = null;
   // True while dispatching an incoming 'state' message to the tool's
-  // onStateReceived callback — the tool's own render/mutation cycle checks
+  // onStateReceived callback - the tool's own render/mutation cycle checks
   // this (via isApplyingRemote()) before syncing back out, so applying a
   // remote update never immediately bounces right back to the room.
   let _applying = false;
 
-  // The room we intend to stay connected to — null means "no reconnect
+  // The room we intend to stay connected to - null means "no reconnect
   // wanted" (idle, or the user hit Leave). Set once a create/join is
   // actually confirmed (mirrors the Dalamud plugin's SessionClient
   // _desiredRoom), so a later drop always retries via `join`, even for a
@@ -41,7 +41,7 @@ const Session = (() => {
   let _reconnectTimer = null;
   const RECONNECT_DELAYS = [1000, 2000, 5000, 10000, 20000];
 
-  // Supplied by the embedding tool via init() — getSharedState() returns
+  // Supplied by the embedding tool via init() - getSharedState() returns
   // this tool's own synced-fields object on demand (called fresh on every
   // syncState()), onStateReceived(state) applies an incoming state payload
   // to the tool's own model (including any extra keys it piggybacked, like
@@ -51,25 +51,25 @@ const Session = (() => {
 
   const P = { sessionId: null, status: 'idle', count: 1, password: null };
 
-  // Anonymous, room-wide (not per-name — the room has no concept of who's
+  // Anonymous, room-wide (not per-name - the room has no concept of who's
   // who): a count of how many connected clients have acked vs. the total,
   // while a check is active. Mirrors P's reset points (leaveSession/onclose).
   const RC = { active: false, ready: 0, total: 0, expiresAt: null };
   // Set only on the server's timeout broadcast (see server/index.js's
-  // READY_CHECK_TIMEOUT_MS) — a transient phase shown for a few seconds
+  // READY_CHECK_TIMEOUT_MS) - a transient phase shown for a few seconds
   // after RC.active has already gone false, same idea as the all-ready fade.
   let _rcTimedOut = false;
   let _rcFadeTimer = null;
-  // Ticks the countdown text once a second while a check is active — the
+  // Ticks the countdown text once a second while a check is active - the
   // server only pushes a new message on actual state changes (join/ack/
   // cancel/timeout), not once a second, so nothing else would advance
   // "Xs left" between those.
   let _rcCountdownInterval = null;
-  // Whether THIS client has already acked — the server only broadcasts
+  // Whether THIS client has already acked - the server only broadcasts
   // aggregate counts (ready/total), never who specifically, so this is purely
   // local bookkeeping. Set for the initiator too, since starting a check
   // counts as their own ack server-side (see server/index.js's readyCheck
-  // handler) — without this they'd see their own "I'm Ready" button still
+  // handler) - without this they'd see their own "I'm Ready" button still
   // sitting there despite already being counted.
   let _iAmReady = false;
 
@@ -125,7 +125,7 @@ const Session = (() => {
     RC.ready = msg.ready;
     RC.total = msg.total;
     RC.expiresAt = msg.expiresAt || null;
-    // Explicit end (cancel/timeout) — the local-fade branches below handle
+    // Explicit end (cancel/timeout) - the local-fade branches below handle
     // resetting it for the "everyone's ready" ending instead, since that one
     // never arrives as its own active:false message (see the comment below).
     if (!RC.active) _iAmReady = false;
@@ -133,7 +133,7 @@ const Session = (() => {
     if (RC.active && !wasActive) playReadyCheckBeep();
     renderReadyCheck();
 
-    // Only worth ticking while there's an actual countdown on screen — once
+    // Only worth ticking while there's an actual countdown on screen - once
     // everyone's ready the text no longer shows one (see renderReadyCheck),
     // and leaving the interval running through that fade would otherwise
     // never get cleared (that fade resolves via its own setTimeout below, not
@@ -142,8 +142,8 @@ const Session = (() => {
     _rcCountdownInterval = (RC.active && RC.ready < RC.total) ? setInterval(renderReadyCheck, 1000) : null;
 
     // The server clears its own state the instant everyone's acked (or a
-    // check times out), so these are the LAST frames we'll get for either —
-    // fade them out locally after a beat rather than leaving them on screen
+    // check times out), so these are the LAST frames we'll get for either.
+    // Fade them out locally after a beat rather than leaving them on screen
     // until the next check.
     if (RC.active && RC.ready >= RC.total) {
       _rcFadeTimer = setTimeout(() => { RC.active = false; _iAmReady = false; renderReadyCheck(); }, 3000);
@@ -165,7 +165,7 @@ const Session = (() => {
   function startReadyCheck() {
     if (!_ws || _ws.readyState !== WebSocket.OPEN) return;
     // The server auto-marks the initiator ready (see server/index.js's
-    // readyCheck handler) — set optimistically here rather than waiting for
+    // readyCheck handler) - set optimistically here rather than waiting for
     // the broadcast to round-trip back, same reasoning as ackReady below.
     _iAmReady = true;
     _ws.send(JSON.stringify({ type: 'readyCheck' }));
@@ -183,7 +183,7 @@ const Session = (() => {
   }
 
   // onError defaults to the normal user-facing "session error" path
-  // (alert + drop to idle) — the reconnect flow below passes its own
+  // (alert + drop to idle) - the reconnect flow below passes its own
   // handler instead, since silently alert()ing on every automatic retry
   // would be obnoxious, and a failed retry needs to try something else
   // rather than giving up outright.
@@ -191,7 +191,7 @@ const Session = (() => {
     if (_ws) { _ws.onclose = null; _ws.close(); }
     _ws = new WebSocket(WS_URL);
     // A connection failure (e.g. the relay process itself being down, mid
-    // reconnect) fires 'error' then 'close' — onclose's reconnect logic is
+    // reconnect) fires 'error' then 'close' - onclose's reconnect logic is
     // what actually matters, this just needs to exist so the error itself
     // isn't left unhandled.
     _ws.onerror = () => {};
@@ -203,7 +203,7 @@ const Session = (() => {
         P.sessionId = msg.room;
         P.status = 'active';
         // hasPassword reflects whether the ROOM actually requires one, not
-        // whether we happened to type something into that field — without
+        // whether we happened to type something into that field - without
         // this, joining an unprotected room after typing a (server-ignored)
         // password would wrongly keep showing "🔒 Password protected".
         if (!msg.hasPassword) P.password = null;
@@ -226,7 +226,7 @@ const Session = (() => {
     _ws.onclose = () => {
       _ws = null;
       // _desiredRoom is the actual "should we still be connected somewhere"
-      // signal, not P.status — status flips to 'reconnecting' the moment a
+      // signal, not P.status - status flips to 'reconnecting' the moment a
       // retry starts, so gating on 'active' here would silently swallow a
       // FAILED reconnect attempt's own close/error (e.g. the relay still
       // being down) instead of scheduling the next one. leaveSession()
@@ -267,7 +267,7 @@ const Session = (() => {
   // Drop triggers this automatically (see connectWS's onclose); a "Give up"
   // click while reconnecting calls it directly via giveUpReconnect. Retries
   // `join` against the room we were last confirmed in; if the room's gone
-  // (the relay process itself restarted and wiped its in-memory rooms —
+  // (the relay process itself restarted and wiped its in-memory rooms,
   // see server/index.js), falls back to `create`-ing that exact code right
   // back so everyone else's own `join` retry lands back in the same room.
   // Whoever gets there first "wins" the recreate; anyone who loses that race
@@ -299,16 +299,16 @@ const Session = (() => {
   }
 
 
-  // One button instead of separate Create/Join — typing nothing and
+  // One button instead of separate Create/Join - typing nothing and
   // clicking it creates a fresh (random-code) room, same as Create used to.
   // Typing a code tries to join it, falling back to creating that exact
-  // code only if it doesn't exist yet (not on any other error — a wrong
+  // code only if it doesn't exist yet (not on any other error - a wrong
   // password shouldn't silently spin up an unrelated empty room). Two
   // people independently typing the same code and both landing in one room
   // is the whole point of a shared code, not a collision to guard against.
   //
   // 'client: webapp' tells the relay this connection counts toward ready
-  // check (see server/index.js's webappCount) — the Dalamud plugin identifies
+  // check (see server/index.js's webappCount) - the Dalamud plugin identifies
   // itself as 'plugin' instead and is excluded, since the game already has
   // its own ready check.
   function joinOrCreate() {
@@ -336,7 +336,7 @@ const Session = (() => {
   }
 
   // extra carries whatever one-shot flags the tool wants to piggyback onto
-  // this specific push (Kefka's clearDebuffs/historySnapshot) — see
+  // this specific push (Kefka's clearDebuffs/historySnapshot) - see
   // getSharedState's comment. Merged on top of the tool's own synced
   // fields, not the other way around, so a key collision favors the extra.
   function syncState(extra) {
@@ -359,7 +359,7 @@ const Session = (() => {
     if (!P.sessionId) return;
     // Bundling the password into the share link (rather than making whoever
     // clicks it type it in separately) is the whole point of tying it to the
-    // room code in the first place — a link a raid leader drops in Discord
+    // room code in the first place - a link a raid leader drops in Discord
     // should just work for the raid, not add a second secret to relay.
     let url = location.href.split('?')[0] + '?room=' + P.sessionId;
     if (P.password) url += '&pw=' + encodeURIComponent(P.password);
@@ -380,7 +380,7 @@ const Session = (() => {
     }
     if (P.sessionId) document.getElementById('room-code-val').textContent = P.sessionId;
     document.getElementById('room-count').textContent = `· ${P.count} connected`;
-    // Revealed on hover via the native title tooltip — not sensitive enough
+    // Revealed on hover via the native title tooltip - not sensitive enough
     // to hide from someone already in the room, since the share link
     // already carries it in plain text anyway (see copyRoom() below).
     const lock = document.getElementById('room-lock');
@@ -389,7 +389,7 @@ const Session = (() => {
   }
 
   // Registers the tool's callbacks, then auto-joins if the URL carries
-  // ?room=XXXX (and optionally &pw=...) from a shared link — must run AFTER
+  // ?room=XXXX (and optionally &pw=...) from a shared link - must run AFTER
   // the callbacks are registered, since a fast 'joined'/'state' response
   // could otherwise arrive before onStateReceived exists. Clears both
   // params afterward so a refresh starts fresh instead of re-joining.

@@ -10,7 +10,7 @@ const S = {
 
 function tog(k)    { S[k] = !S[k]; render(); }
 
-// When k was last set by an INCOMING remote update (see applyShared) —
+// When k was last set by an INCOMING remote update (see applyShared),
 // used below to stop a race where two people click the same correct call
 // at nearly the same instant: if A's click's broadcast reaches B right
 // before B's own (independent, already in-flight) click on the same value
@@ -27,7 +27,7 @@ function set(k, v) {
 }
 function exc(k, v) { S[k] = S[k] === v ? null : v; render(); }
 
-// g1pos/g2pos/g1accel/g2accel are personal (not in SYNC_KEYS — see below),
+// g1pos/g2pos/g1accel/g2accel are personal (not in SYNC_KEYS - see below),
 // so a remote reset() never reached them through the normal state sync.
 // _pendingClearDebuffs piggybacks a one-shot flag onto the very next
 // syncState() push so every other client clears its own copy too.
@@ -36,7 +36,7 @@ function clearLocalDebuffs() { for (const k of PERSONAL_KEYS) S[k] = k.endsWith(
 
 // ── Pull history ─────────────────────────────────────────────────────────
 // reset() snapshots the state it's about to clear so a misclick (or just
-// wanting to see an earlier pull's calls) can be recovered — but only when
+// wanting to see an earlier pull's calls) can be recovered - but only when
 // there was actually something to lose, so spamming Reset on an already-
 // clear state doesn't fill this with blank entries. Local per browser (like
 // the personal debuff fields), not synced to the room.
@@ -128,7 +128,7 @@ document.addEventListener('click', (e) => {
 
 // Piggybacked onto the next Session.syncState() push (see syncState() below)
 // so every other client applies the same clear/history entry to their own
-// copy — previously only the client that clicked Reset ever got a
+// copy - previously only the client that clicked Reset ever got a
 // pullHistory entry, since the outgoing state message only carried the
 // post-reset (empty) fields, never what was actually cleared.
 let _pendingClearDebuffs = false;
@@ -314,7 +314,7 @@ function render() {
   document.getElementById('g2li').disabled = S.g2accel || g1PosOrder;
   document.getElementById('g2ac').disabled = !!S.g2pos || S.g1accel || g1PosOrder;
 
-  // Titled on the wrapping .btn-group, not the buttons themselves —
+  // Titled on the wrapping .btn-group, not the buttons themselves, since
   // disabled buttons don't fire hover events in most browsers, so a
   // title on a disabled <button> never shows a tooltip.
   hint('g2rf-group',  g1Order,     'Set Grand Cross Omega #1 Cast first');
@@ -378,7 +378,7 @@ function render() {
 
 // ── Session wiring ───────────────────────────────────────────────────────
 // The room/relay/ready-check machinery itself lives in session.js (shared
-// with any future webapp tool); this is just Kefka's own plug into it —
+// with any future webapp tool); this is just Kefka's own plug into it:
 // which fields sync, and how to apply/re-emit them.
 // Mechanic-wide fields only; player-specific debuffs (g1/g2 pos/accel) stay local
 const SYNC_KEYS = ['g1rf', 'g2rf', 'it1type', 'it1rf', 'it2rf', 'thunderRF', 'blizzardRF', 'enforceOrder'];
@@ -396,7 +396,7 @@ function applyShared(state) {
   }
 }
 
-// Thin wrapper so render()'s tail call stays a plain syncState() — attaches
+// Thin wrapper so render()'s tail call stays a plain syncState() - attaches
 // whatever Reset() left pending (see reset()'s comment) before handing off
 // to Session.syncState(), which sends sharedState() plus this extra.
 function syncState() {
@@ -414,7 +414,7 @@ function onStateReceived(state) {
 }
 
 // ── Icon mode ────────────────────────────────────────────────────────────
-// A personal display preference, not a raid-shared fact like enforceOrder —
+// A personal display preference, not a raid-shared fact like enforceOrder,
 // stored in localStorage per-browser rather than synced via SYNC_KEYS, so
 // one person turning it on doesn't change what anyone else sees.
 const ICON_MODE_KEY = 'kefkaIconMode';
@@ -430,10 +430,10 @@ const BTN_VECTOR_ICON = {
 // Water/Lightning/Accel Bomb/Inferno/Tsunami DO have real debuffs behind
 // them (Compressed Water / Forked Lightning / Acceleration Bomb / Entropy /
 // Dynamic Fluid), so these show the actual game icon instead of a
-// hand-drawn approximation — same real-name-lookup principle as the
+// hand-drawn approximation - same real-name-lookup principle as the
 // Dalamud plugin's GameIcons.cs. Self-hosted under assets/icons/ (originally
 // resolved via XIVAPI v2's search/asset endpoints during development) rather
-// than fetched from XIVAPI at runtime — these 5 icons never change, so
+// than fetched from XIVAPI at runtime - these 5 icons never change, so
 // there's no reason to depend on a third party being up mid-raid.
 const GAME_ICON_PATH = {
   compressedWater: 'assets/icons/compressed-water.png',
@@ -451,7 +451,7 @@ const BTN_GAME_ICON = {
 };
 
 // Wraps each mapped button's existing text in a span alongside an injected
-// icon span, once at load — render() never touches these buttons'
+// icon span, once at load - render() never touches these buttons'
 // text/innerHTML afterward (only className/style), so this is safe to do
 // exactly once rather than on every render().
 function initIconButtons() {
@@ -502,6 +502,6 @@ document.getElementById('icon-mode-cb').checked = _iconModeOn;
 setIconMode(_iconModeOn);
 
 // Registers this tool's fields with the shared session layer, and (as part
-// of that) auto-joins if the URL carries ?room=XXXX from a shared link —
-// see session.js's init().
+// of that) auto-joins if the URL carries ?room=XXXX from a shared link
+// (see session.js's init()).
 Session.init({ getSharedState: sharedState, onStateReceived });

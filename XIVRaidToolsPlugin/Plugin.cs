@@ -58,12 +58,12 @@ public sealed class Plugin : IDalamudPlugin
         PluginInterface.UiBuilder.OpenConfigUi += () => _configWindow.IsOpen = true;
 
         // A wrong password, a taken custom room code, etc. used to only hit
-        // the plugin log (see ReportInvalidCommand's comment below) —
+        // the plugin log (see ReportInvalidCommand's comment below), so
         // nobody actually trying to join would ever see why it failed.
         _session.SessionError += msg => ChatGui.PrintError($"XIV Raid Tools: {msg}");
     }
 
-    // A Log.Warning alone is invisible in practice — it only reaches the
+    // A Log.Warning alone is invisible in practice - it only reaches the
     // Dalamud plugin log, not the game chat or the window, so a bad macro
     // fired mid-pull would silently no-op with no on-screen indication why.
     // PrintError puts the same message in chat, in the game's standard
@@ -179,12 +179,12 @@ public sealed class Plugin : IDalamudPlugin
     private static void ToggleRf(ref RF field, RF value) => field = field == value ? RF.None : value;
 
     // "gco real"/"gco fake" targets whichever GCO's Cast is still unresolved
-    // (G1 first, then G2) — once both are set, there's nothing left to call
+    // (G1 first, then G2) - once both are set, there's nothing left to call
     // until Reset. "gco water|lightning|bomb" does the same but keyed off
     // the debuff fields instead: since SetPos/ToggleAccel's pairing rule
     // (see MechState.cs) auto-derives the OTHER target's assignment, only
     // one debuff call is ever needed per GCO pair. Both no-op (reporting an
-    // error, not opening the window — see caller) once both slots on that
+    // error, not opening the window - see caller) once both slots on that
     // axis are already resolved. Returns whether the command actually did
     // anything, so HandleKefkaCommand knows whether to open the window.
     private bool HandleGco(string arg)
@@ -226,7 +226,7 @@ public sealed class Plugin : IDalamudPlugin
     // target that exact GCO, for when a macro needs to be explicit (e.g.
     // firing GCO2 first because that's how a particular pull went) rather
     // than relying on "whichever isn't resolved yet". No "already resolved"
-    // guard here — toggling a specific, known slot is always well-defined.
+    // guard here - toggling a specific, known slot is always well-defined.
     private bool HandleGcoExplicit(int gco, string arg) => arg switch
     {
         "real" or "fake" => ApplyGcoRf(gco, arg),
@@ -249,7 +249,7 @@ public sealed class Plugin : IDalamudPlugin
         return true;
     }
 
-    // No PushState() — g1pos/g2pos/g1accel/g2accel are never in
+    // No PushState() - g1pos/g2pos/g1accel/g2accel are never in
     // BuildSharedState's payload (personal, unsynced fields), so pushing
     // after only one of these changing would send the room's already-synced
     // fields unchanged. Matches KefkaSaysWindow's DebuffsRow buttons.
@@ -265,7 +265,7 @@ public sealed class Plugin : IDalamudPlugin
         return true;
     }
 
-    // "tsunami"/"inferno" name a floor shape, not a slot (1 or 2) — Floor AOE
+    // "tsunami"/"inferno" name a floor shape, not a slot (1 or 2) - Floor AOE
     // #2's type is always the complement of #1's (see MechState.It2Type), so
     // the first call of either name claims slot 1 and fixes what slot 2 must
     // be; a later call naming the OTHER shape then targets slot 2 instead.

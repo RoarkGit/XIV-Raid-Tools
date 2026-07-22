@@ -8,7 +8,7 @@ const rooms = new Map(); // roomId -> Set<ws>
 const roomPasswords = new Map(); // roomId -> string, only present when the room was created with one
 const readyChecks = new Map(); // roomId -> { ready: Set<ws>, timer }, only present while a check is active
 // roomId -> the most recent `state` payload relayed in that room. Replayed
-// (see `join`) to whoever joins/rejoins next so they don't start blank —
+// (see `join`) to whoever joins/rejoins next so they don't start blank,
 // stored and replayed completely opaquely, same as the live broadcast, so
 // this needs no per-tool knowledge (works identically for the webapp's
 // mechanic fields and the plugin's, or any future tool's own shape).
@@ -22,7 +22,7 @@ function genRoomId() {
   return id;
 }
 
-// Ready check is webapp-only — the game already has its own ready check, so
+// Ready check is webapp-only - the game already has its own ready check, so
 // the Dalamud plugin never sends readyCheck/readyAck (see SessionClient.cs)
 // and would never be able to complete a check counted against the WHOLE
 // room. `client` is set from create/join's payload (defaults to 'webapp'
@@ -53,7 +53,7 @@ function broadcastCount(id) {
 // gone (active/ready would otherwise read back as false/0).
 //
 // expiresAt is an absolute epoch-ms deadline rather than a "seconds
-// remaining" number — clients derive their own live countdown from it
+// remaining" number - clients derive their own live countdown from it
 // against their own clock each render tick, instead of the server having to
 // push a new message every second just to tick a number down.
 function broadcastReadyCheck(id, extra = {}) {
@@ -68,7 +68,7 @@ function broadcastReadyCheck(id, extra = {}) {
   }
 }
 
-// Central teardown for a room's active check — always goes through here
+// Central teardown for a room's active check - always goes through here
 // (rather than a bare `readyChecks.delete`) so the timeout timer never
 // outlives the check it belongs to and fires again for a since-completed
 // or since-cancelled room.
@@ -119,7 +119,7 @@ wss.on('connection', (ws) => {
         ws.send(JSON.stringify({ type: 'error', msg: 'Invalid room code. Must be 4 letters.' }));
         return;
       }
-      // Must already exist — a `join` used to silently create the room if
+      // Must already exist - a `join` used to silently create the room if
       // the code wasn't taken, which meant there was never a roomPasswords
       // entry to check a password against, so ANY (or no) password on that
       // join would get waved through. Rooms can only come into existence
@@ -137,15 +137,15 @@ wss.on('connection', (ws) => {
       ws._room = id;
       if (msg.client === 'plugin') ws._client = 'plugin';
       // hasPassword reflects whether the ROOM actually requires one, not
-      // whether this joiner happened to type something into that field —
-      // without it, a client that typed a password joining an unprotected
+      // whether this joiner happened to type something into that field,
+      // without which a client that typed a password joining an unprotected
       // room (where the server just ignores the field) would have no way
       // to tell it wasn't actually needed, and would wrongly show itself
       // as "password protected".
       ws.send(JSON.stringify({ type: 'joined', room: id, hasPassword: roomPasswords.has(id) }));
       broadcastCount(id);
       // Catches the new (or reconnecting) member up on whatever's already
-      // been synced in this room — without this a join always starts blank
+      // been synced in this room - without this a join always starts blank
       // until someone else happens to change something. Sent only to them,
       // not broadcast, and only if anyone's actually pushed a state yet.
       if (lastState.has(id)) ws.send(JSON.stringify({ type: 'state', state: lastState.get(id) }));
@@ -159,8 +159,8 @@ wss.on('connection', (ws) => {
       }
 
     } else if (msg.type === 'readyCheck') {
-      // Starting a fresh check counts the initiator as already ready —
-      // matches the usual in-game ready-check convention (the person who
+      // Starting a fresh check counts the initiator as already ready,
+      // matching the usual in-game ready-check convention (the person who
       // calls it isn't expected to also click their own "ready"). Only
       // true for a webapp initiator, though: a plugin client isn't counted
       // in `total` (see webappCount), so adding it here would let ready
@@ -169,8 +169,8 @@ wss.on('connection', (ws) => {
       const id = ws._room;
       clearReadyCheck(id); // in case one was already running for this room
       const timer = setTimeout(() => {
-        // Still active means nobody completed or cancelled it in time —
-        // report how far it actually got before dropping it, so "timed
+        // Still active means nobody completed or cancelled it in time.
+        // Report how far it actually got before dropping it, so "timed
         // out" isn't indistinguishable from "timed out with everyone
         // ready" (that shouldn't happen given the readyAck completion
         // check, but this is the truth on the wire either way).
@@ -186,7 +186,7 @@ wss.on('connection', (ws) => {
       broadcastReadyCheck(id);
       // A solo webapp room (or, now, one where the initiator is the only
       // webapp member with everyone else on the plugin) is already
-      // complete the instant it starts — without this it'd sit "active"
+      // complete the instant it starts - without this it'd sit "active"
       // until the 30s timeout fired and wrongly reported a timeout despite
       // every webapp member already having been ready.
       if (readyChecks.get(id).ready.size >= webappCount(id)) clearReadyCheck(id);
@@ -196,7 +196,7 @@ wss.on('connection', (ws) => {
       if (!id || !readyChecks.has(id) || ws._client === 'plugin') return;
       readyChecks.get(id).ready.add(ws);
       broadcastReadyCheck(id);
-      // Everyone (webapp) has acked — clear it so a subsequent join/leave
+      // Everyone (webapp) has acked - clear it so a subsequent join/leave
       // (or the next readyCheck message) starts clean rather than reusing
       // a spent Set.
       if (readyChecks.get(id).ready.size >= webappCount(id)) clearReadyCheck(id);
@@ -221,7 +221,7 @@ wss.on('connection', (ws) => {
         broadcastCount(ws._room);
         // A departing member could have been the last one not yet acked
         // (completing the check) or the only one who HAD acked (never
-        // completing it now that they're gone) — recompute either way.
+        // completing it now that they're gone) - recompute either way.
         if (readyChecks.has(ws._room)) {
           readyChecks.get(ws._room).ready.delete(ws);
           broadcastReadyCheck(ws._room);

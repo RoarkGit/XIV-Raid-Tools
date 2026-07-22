@@ -5,7 +5,7 @@ using Dalamud.Interface.Windowing;
 namespace XIVRaidToolsPlugin.Windows;
 
 // A popout docked to the right of KefkaSaysWindow rather than a dropdown
-// popup — a popup closes the instant focus moves back to the main window
+// popup - a popup closes the instant focus moves back to the main window
 // (e.g. to click something while comparing an old pull), which defeats the
 // point of a reference list. A real Window has no such auto-close and gets
 // its own scrollbar for free once PullHistory grows past the window height.
@@ -22,7 +22,7 @@ public sealed class PullHistoryWindow : Window
         SizeCondition = ImGuiCond.FirstUseEver;
     }
 
-    // Snaps to the main window's current right edge every frame — anchor's
+    // Snaps to the main window's current right edge every frame - anchor's
     // own Draw() (which runs first, see Plugin's AddWindow order) refreshes
     // CurrentPos/CurrentSize each frame, so this always reads this frame's
     // position, not last frame's (no drag lag).
@@ -34,7 +34,7 @@ public sealed class PullHistoryWindow : Window
         PositionCondition = ImGuiCond.Always;
 
         // Closing the main window makes this popout meaningless to keep
-        // open (and its anchor position stale) — follow it shut.
+        // open (and its anchor position stale) - follow it shut.
         if (!_anchor.IsOpen) IsOpen = false;
     }
 

@@ -2,9 +2,9 @@
 watchPatterns = ["server/**", "package.json", "package-lock.json"]
 
 [deploy]
-# Replaces a stale "sfo" region left over from before this file existed —
+# Replaces a stale "sfo" region left over from before this file existed.
 # Railway retired that identifier in favor of named "Metal" regions. This is
 # a best-guess successor (sfo ~ US West/California), not confirmed against
-# the actual workspace default — swap it if Railway's dashboard/CLI reports
+# the actual workspace default - swap it if Railway's dashboard/CLI reports
 # a different one once this deploys.
 region = "us-west2"
