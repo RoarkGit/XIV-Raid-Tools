@@ -650,12 +650,26 @@ public sealed class KefkaSaysWindow : Window
         var cardGap = Sc(8f);
         var cardWidth = (ImGui.GetContentRegionAvail().X - cardGap) / 2f;
 
-        var spread = s.Spread();
-        Card(cardWidth, "Position", spread == false ? Icons.Stack : Icons.Spread, spread is not null,
+        // Position shows the actual water/lightning debuff icon (whichever
+        // one drove the SPREAD/STACK call) instead of the hand-drawn
+        // spread/stack glyph - falls back to that glyph only when nothing's
+        // set yet (Pos.None), same as kefka-says's icon mode.
+        var (spread, pos) = s.Spread();
+        Icon posIcon = pos switch
+        {
+            Pos.Water => _gameIcons.Water ?? Icons.Droplet,
+            Pos.Lightning => _gameIcons.Lightning ?? Icons.Thunder,
+            _ => spread == false ? Icons.Stack : Icons.Spread,
+        };
+        Card(cardWidth, "Position", posIcon, spread is not null,
             spread == false ? AccentTag.Stack : AccentTag.Spread, spread == true ? "SPREAD" : "STACK");
         ImGui.SameLine(0, cardGap);
+
+        // Same swap for Accel Bomb, using the Acceleration Bomb icon
+        // regardless of whether the call is stay-still or keep-moving.
         var accel = s.Accel();
-        Card(cardWidth, "Accel Bomb", accel == "move" ? Icons.Move : Icons.Still, accel is not null,
+        Icon accelIcon = accel is not null ? (_gameIcons.AccelBomb ?? Icons.Bomb) : Icons.Still;
+        Card(cardWidth, "Accel Bomb", accelIcon, accel is not null,
             accel == "move" ? AccentTag.Move : AccentTag.Still, accel == "still" ? "STOP" : "MOVE");
         SetExactGap(StatusCardGap);
 
@@ -848,12 +862,15 @@ public sealed class KefkaSaysWindow : Window
         var interiorWidth = ImGui.GetContentRegionAvail().X - Sc(CardPadX);
         var blockX = rowStart.X + MathF.Max(0, (interiorWidth - block) / 2f);
 
-        // name - right-aligned in its slot, vertically centered
+        // name - right-aligned in its slot, vertically centered. Colored to
+        // match the row's accent once active (mirrors .tb-n.active in
+        // index.html) instead of staying dim forever, so e.g. "Inferno" or
+        // "1st GCO" pops the instant a state is set for it.
         ImGui.SetWindowFontScale(_uiScale * LabelScale);
         var nWidth = ImGui.CalcTextSize(n).X;
         ImGui.SetWindowFontScale(_uiScale);
         ImGui.SetCursorScreenPos(new Vector2(blockX + MathF.Max(0, nameSlot - nWidth), rowStart.Y + (rowH - nameH) / 2f));
-        ScaledText(n, LabelScale, Theme.TextDim);
+        ScaledText(n, LabelScale, active ? Theme.CardColor(tag) : Theme.TextDim);
 
         // icon - vertically centered
         var iconX = blockX + nameSlot + gap;

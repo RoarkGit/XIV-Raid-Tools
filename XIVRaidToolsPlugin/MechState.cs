@@ -75,8 +75,11 @@ public sealed class MechState : ISyncedState
         _ => FloorType.None,
     };
 
-    // calcSpread()
-    public bool? Spread()
+    // calcSpread() - also reports which debuff (Water/Lightning) drove the
+    // call, so the status column can show that real debuff icon instead of
+    // a generic spread/stack glyph, same priority (a true result from
+    // either GCO wins over a false one) as the plain bool? version had.
+    public (bool? Spread, Pos Pos) Spread()
     {
         static bool? Chk(Pos pos, RF rf)
         {
@@ -88,9 +91,11 @@ public sealed class MechState : ISyncedState
 
         var s1 = Chk(G1Pos, G1Rf);
         var s2 = Chk(G2Pos, G2Rf);
-        if (s1 == true || s2 == true) return true;
-        if (s1 == false || s2 == false) return false;
-        return null;
+        if (s1 == true) return (true, G1Pos);
+        if (s2 == true) return (true, G2Pos);
+        if (s1 == false) return (false, G1Pos);
+        if (s2 == false) return (false, G2Pos);
+        return (null, Pos.None);
     }
 
     // calcAccel()

@@ -186,6 +186,11 @@ function togAccel(gco) {
 
 function it2type() { return S.it1type ? (S.it1type === 'inferno' ? 'tsunami' : 'inferno') : null; }
 
+// Returns both the derived SPREAD/STACK call and which debuff (water/
+// lightning) drove it, so icon mode can show the real debuff icon instead
+// of the hand-drawn spread/stack glyph while keeping the same priority
+// (a true result from either GCO wins over a false one) the plain boolean
+// version used.
 function calcSpread() {
   const chk = (pos, rf) => {
     if (!pos || !rf) return null;
@@ -194,9 +199,11 @@ function calcSpread() {
     return null;
   };
   const s1 = chk(S.g1pos, S.g1rf), s2 = chk(S.g2pos, S.g2rf);
-  if (s1 === true  || s2 === true)  return true;
-  if (s1 === false || s2 === false) return false;
-  return null;
+  if (s1 === true)  return { spread: true,  pos: S.g1pos };
+  if (s2 === true)  return { spread: true,  pos: S.g2pos };
+  if (s1 === false) return { spread: false, pos: S.g1pos };
+  if (s2 === false) return { spread: false, pos: S.g2pos };
+  return { spread: null, pos: null };
 }
 
 function calcAccel() {
@@ -222,6 +229,13 @@ function btnCls(id, on, key) {
   document.getElementById(id).className = 'btn' + (on ? ` on-${key}` : '');
 }
 
+// setCard()'s iconSvg param just gets dropped into innerHTML, so handing it
+// an <img> tag for the real debuff icon works the same as handing it one of
+// the hand-drawn IC.* glyph strings.
+function gameIconImg(path) {
+  return `<img src="${path}" alt="">`;
+}
+
 function setCard(iconId, valId, subId, iconSvg, colorCls, valText, subText) {
   const ic = document.getElementById(iconId);
   ic.innerHTML = iconSvg || IC.spread;
@@ -233,15 +247,19 @@ function setCard(iconId, valId, subId, iconSvg, colorCls, valText, subText) {
   if (subId) document.getElementById(subId).textContent = subText || '';
 }
 
-function setTBRow(iconId, valId, subId, iconSvg, colorCls, valText, subText) {
+function setTBRow(iconId, valId, subId, nameId, iconSvg, colorCls, valText, subText) {
   const ic = document.getElementById(iconId);
   ic.innerHTML = iconSvg || ic.dataset.ph || '';
   ic.className = 'tb-icon' + (iconSvg ? '' : ' dim');
-  ic.style.color = colorCls ? getComputedStyle(document.documentElement).getPropertyValue(colorVar(colorCls)).trim() : '';
+  const color = colorCls ? getComputedStyle(document.documentElement).getPropertyValue(colorVar(colorCls)).trim() : '';
+  ic.style.color = color;
   const vl = document.getElementById(valId);
   vl.textContent = valText || '';
   vl.className = 'tb-val ' + (colorCls || 'c-dim');
   if (subId) document.getElementById(subId).textContent = subText || '';
+  const nl = document.getElementById(nameId);
+  nl.className = 'tb-n' + (colorCls ? ' active' : '');
+  nl.style.color = color;
 }
 
 function colorVar(cls) {
@@ -256,31 +274,65 @@ function colorVar(cls) {
   return map[cls] || '--text-dim';
 }
 
-function setGaze(iconId, valId, rf) {
+function setGaze(iconId, valId, nameId, rf) {
   const ic = document.getElementById(iconId);
   const vl = document.getElementById(valId);
+  const nl = document.getElementById(nameId);
   if (!rf) {
     ic.innerHTML = IC.gazeIn;
     ic.className = 'tb-icon dim';
     ic.style.color = '';
     vl.textContent = '';
     vl.className = 'tb-val c-dim';
+    nl.className = 'tb-n';
+    nl.style.color = '';
   } else if (rf === 'real') {
     ic.innerHTML = IC.gazeOut;
     ic.className = 'tb-icon';
     ic.style.color = 'var(--col-out)';
     vl.textContent = 'OUT';
     vl.className = 'tb-val c-out';
+    nl.className = 'tb-n active';
+    nl.style.color = 'var(--col-out)';
   } else {
     ic.innerHTML = IC.gazeIn;
     ic.className = 'tb-icon';
     ic.style.color = 'var(--col-in)';
     vl.textContent = 'IN';
     vl.className = 'tb-val c-in';
+    nl.className = 'tb-n active';
+    nl.style.color = 'var(--col-in)';
   }
 }
 
 // ── Render ─────────────────────────────────────────────────────────────────
+// Position/Accel Bomb cards - in icon mode, show the actual water/lightning/
+// Acceleration Bomb debuff icon instead of the hand-drawn spread/stack or
+// still/move glyph. Split out from render() so toggling icon mode itself
+// (setIconMode()) can refresh just these two without running a full render
+// pass (and the state sync at the end of it) for a purely local preference.
+function renderStatusIcons() {
+  const iconMode = document.body.classList.contains('icon-mode');
+
+  // Position - shows whichever debuff (water/lightning) actually drove the
+  // SPREAD/STACK call.
+  const { spread, pos } = calcSpread();
+  const posIcon = iconMode && pos
+    ? gameIconImg(GAME_ICON_PATH[pos === 'water' ? 'compressedWater' : 'forkedLightning'])
+    : null;
+  if (spread === true)       setCard('si-pos','sv-pos', null, posIcon || IC.spread, 'c-spread', 'SPREAD');
+  else if (spread === false) setCard('si-pos','sv-pos', null, posIcon || IC.stack,  'c-stack',  'STACK');
+  else                       setCard('si-pos','sv-pos', null, null, null, null);
+
+  // Accel Bomb - same swap, using the Acceleration Bomb icon regardless of
+  // whether the call is stay-still or keep-moving.
+  const accel = calcAccel();
+  const accelIcon = iconMode && accel ? gameIconImg(GAME_ICON_PATH.accelerationBomb) : null;
+  if (accel === 'still')     setCard('si-accel','sv-accel', null, accelIcon || IC.still, 'c-still', 'STAY STILL');
+  else if (accel === 'move') setCard('si-accel','sv-accel', null, accelIcon || IC.move,  'c-move',  'KEEP MOVING');
+  else                       setCard('si-accel','sv-accel', null, null, null, null);
+}
+
 function render() {
   btnCls('g1r',  S.g1rf === 'real',       'real');
   btnCls('g1f',  S.g1rf === 'fake',       'fake');
@@ -330,26 +382,16 @@ function render() {
   document.getElementById('i2f').disabled = it1Order;
   hint('i2rf-group', it1Order, 'Set Floor AOE #1 Type first');
 
-  // Position
-  const spread = calcSpread();
-  if (spread === true)       setCard('si-pos','sv-pos', null, IC.spread, 'c-spread', 'SPREAD');
-  else if (spread === false) setCard('si-pos','sv-pos', null, IC.stack,  'c-stack',  'STACK');
-  else                       setCard('si-pos','sv-pos', null, null, null, null);
-
-  // Accel Bomb
-  const accel = calcAccel();
-  if (accel === 'still')     setCard('si-accel','sv-accel', null, IC.still, 'c-still', 'STAY STILL');
-  else if (accel === 'move') setCard('si-accel','sv-accel', null, IC.move,  'c-move',  'KEEP MOVING');
-  else                       setCard('si-accel','sv-accel', null, null, null, null);
+  renderStatusIcons();
 
   // Gaze
-  setGaze('gi-gz1','gv-gz1', S.g1rf);
-  setGaze('gi-gz2','gv-gz2', S.g2rf);
+  setGaze('gi-gz1','gv-gz1','gn-gz1', S.g1rf);
+  setGaze('gi-gz2','gv-gz2','gn-gz2', S.g2rf);
 
   // Floor AOE
   const infernoRF    = S.it1type === 'inferno' ? S.it1rf : (t2 === 'inferno' ? S.it2rf : null);
   const infernoShape = floorAoe('inferno', infernoRF);
-  setTBRow('si-inf','sv-inf','ss-inf',
+  setTBRow('si-inf','sv-inf','ss-inf','tn-inf',
     infernoShape ? IC[infernoShape] : null,
     infernoShape ? (infernoRF === 'real' ? 'c-inf-real' : 'c-inf-fake') : null,
     infernoShape ? (infernoRF === 'real' ? 'REAL' : 'FAKE') : null,
@@ -357,18 +399,18 @@ function render() {
 
   const tsunamiRF    = S.it1type === 'tsunami' ? S.it1rf : (t2 === 'tsunami' ? S.it2rf : null);
   const tsunamiShape = floorAoe('tsunami', tsunamiRF);
-  setTBRow('si-tsu','sv-tsu','ss-tsu',
+  setTBRow('si-tsu','sv-tsu','ss-tsu','tn-tsu',
     tsunamiShape ? IC[tsunamiShape] : null,
     tsunamiShape ? (tsunamiRF === 'real' ? 'c-tsu-real' : 'c-tsu-fake') : null,
     tsunamiShape ? (tsunamiRF === 'real' ? 'REAL' : 'FAKE') : null,
     tsunamiShape === 'donut' ? 'Stack → stay in' : tsunamiShape === 'circle' ? 'Stack → get out' : null);
 
   // Thunder & Blizzard
-  setTBRow('si-thr','sv-thr', null,
+  setTBRow('si-thr','sv-thr', null, 'tn-thr',
     S.thunderRF  ? (S.thunderRF  === 'real' ? IC.thunder      : IC.thunderFake)  : null,
     S.thunderRF  ? (S.thunderRF  === 'real' ? 'c-thr-real'    : 'c-thr-fake')    : null,
     S.thunderRF  ? (S.thunderRF  === 'real' ? 'REAL'          : 'FAKE')          : null);
-  setTBRow('si-blz','sv-blz', null,
+  setTBRow('si-blz','sv-blz', null, 'tn-blz',
     S.blizzardRF ? (S.blizzardRF === 'real' ? IC.blizzard     : IC.blizzardFake) : null,
     S.blizzardRF ? (S.blizzardRF === 'real' ? 'c-blz-real'    : 'c-blz-fake')    : null,
     S.blizzardRF ? (S.blizzardRF === 'real' ? 'REAL'          : 'FAKE')          : null);
@@ -419,6 +461,11 @@ function onStateReceived(state) {
 // one person turning it on doesn't change what anyone else sees.
 const ICON_MODE_KEY = 'kefkaIconMode';
 
+// Same per-browser localStorage treatment as icon mode above - whether
+// Inferno/Tsunami show their caption in icon mode is its own preference,
+// separate from icon mode itself being on.
+const IT_CAPTIONS_KEY = 'kefkaItCaptions';
+
 // Real/Fake have no in-game equivalent (they're not a game concept, just
 // this tracker's own UI), so those stay hand-drawn vector glyphs.
 const BTN_VECTOR_ICON = {
@@ -443,11 +490,22 @@ const GAME_ICON_PATH = {
   dynamicFluid: 'assets/icons/dynamic-fluid.png',
 };
 const BTN_GAME_ICON = {
-  g1wa: GAME_ICON_PATH.compressedWater, g2wa: GAME_ICON_PATH.compressedWater,
-  g1li: GAME_ICON_PATH.forkedLightning, g2li: GAME_ICON_PATH.forkedLightning,
-  g1ac: GAME_ICON_PATH.accelerationBomb, g2ac: GAME_ICON_PATH.accelerationBomb,
-  t1i: GAME_ICON_PATH.entropy, t2i: GAME_ICON_PATH.entropy,
-  t1t: GAME_ICON_PATH.dynamicFluid, t2t: GAME_ICON_PATH.dynamicFluid,
+  g1wa: { path: GAME_ICON_PATH.compressedWater },
+  g2wa: { path: GAME_ICON_PATH.compressedWater },
+  g1li: { path: GAME_ICON_PATH.forkedLightning },
+  g2li: { path: GAME_ICON_PATH.forkedLightning },
+  g1ac: { path: GAME_ICON_PATH.accelerationBomb },
+  g2ac: { path: GAME_ICON_PATH.accelerationBomb },
+  // Inferno/Tsunami keep a footer caption under the icon in icon mode,
+  // colored to match the debuff's own --col-* accent (same one .btn.on-*
+  // switches to once selected) so it stands out from the dim default
+  // button text even before selection. GCO's Water/Lightning/Accel Bomb
+  // went back to icon-only - three similar-looking icons side by side in
+  // the Debuffs row didn't need the extra caption.
+  t1i:  { path: GAME_ICON_PATH.entropy,      color: 'var(--col-inferno)', captioned: true },
+  t2i:  { path: GAME_ICON_PATH.entropy,      color: 'var(--col-inferno)', captioned: true },
+  t1t:  { path: GAME_ICON_PATH.dynamicFluid, color: 'var(--col-tsunami)', captioned: true },
+  t2t:  { path: GAME_ICON_PATH.dynamicFluid, color: 'var(--col-tsunami)', captioned: true },
 };
 
 // Wraps each mapped button's existing text in a span alongside an injected
@@ -462,22 +520,39 @@ function initIconButtons() {
     btn.dataset.icon = 'vector';
     btn.innerHTML = `<span class="btn-text">${text}</span><span class="btn-icon">${IC[key]}</span>`;
   }
-  for (const [id, path] of Object.entries(BTN_GAME_ICON)) {
+  for (const [id, { path, color, captioned }] of Object.entries(BTN_GAME_ICON)) {
     const btn = document.getElementById(id);
     if (!btn) continue;
     const text = btn.textContent;
-    btn.dataset.icon = 'game';
-    btn.innerHTML = `<span class="btn-text">${text}</span><span class="btn-icon"><img src="${path}" alt="${text}" loading="lazy"></span>`;
+    btn.dataset.icon = captioned ? 'game-debuff' : 'game';
+    const footer = captioned ? `<span class="btn-footer" style="color:${color}">${text}</span>` : '';
+    btn.innerHTML = `<span class="btn-text">${text}</span><span class="btn-icon"><img src="${path}" alt="${text}" loading="lazy"></span>${footer}`;
   }
 }
 
 function setIconMode(on) {
   document.body.classList.toggle('icon-mode', on);
   localStorage.setItem(ICON_MODE_KEY, on ? '1' : '0');
+  // The captions toggle only does anything while icon mode is on, so gray
+  // it out rather than let it sit there looking live when it isn't.
+  document.getElementById('it-captions-cb').disabled = !on;
+  // Position/Accel Bomb icons depend on icon mode too (see
+  // renderStatusIcons()) - refresh just those rather than a full render(),
+  // which would also fire an unrelated state sync for a local-only toggle.
+  renderStatusIcons();
 }
 
 function toggleIconMode() {
   setIconMode(document.getElementById('icon-mode-cb').checked);
+}
+
+function setItCaptions(on) {
+  document.body.classList.toggle('it-captions', on);
+  localStorage.setItem(IT_CAPTIONS_KEY, on ? '1' : '0');
+}
+
+function toggleItCaptions() {
+  setItCaptions(document.getElementById('it-captions-cb').checked);
 }
 
 // ── Init ───────────────────────────────────────────────────────────────────
@@ -500,6 +575,13 @@ render();
 const _iconModeOn = localStorage.getItem(ICON_MODE_KEY) === '1';
 document.getElementById('icon-mode-cb').checked = _iconModeOn;
 setIconMode(_iconModeOn);
+
+// Defaults to off (unset reads as "off") - captions are an opt-in extra,
+// not the baseline icon-mode look. (.disabled here already reflects
+// _iconModeOn, set by setIconMode() above.)
+const _itCaptionsOn = localStorage.getItem(IT_CAPTIONS_KEY) === '1';
+document.getElementById('it-captions-cb').checked = _itCaptionsOn;
+setItCaptions(_itCaptionsOn);
 
 // Registers this tool's fields with the shared session layer, and (as part
 // of that) auto-joins if the URL carries ?room=XXXX from a shared link

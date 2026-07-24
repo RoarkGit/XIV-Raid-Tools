@@ -102,6 +102,21 @@ body {
 body.icon-mode .btn[data-icon] .btn-text { display: none; }
 body.icon-mode .btn[data-icon] .btn-icon { display: flex; align-items: center; justify-content: center; }
 
+/* Inferno/Tsunami can keep a caption under the icon in icon mode instead of
+   losing their label entirely - stack icon+footer and shrink the icon a
+   touch so both fit in the row's fixed 46px height. Gated behind its own
+   "it-captions" body class (see toggleItCaptions() in app.js) rather than
+   riding on icon-mode alone, so it's a separate opt-in; off by default it
+   falls back to the plain icon-only layout GCO's Water/Lightning/Accel
+   Bomb and Real/Fake's vector check/cross icons always use. */
+.btn-footer { display: none; }
+body.icon-mode.it-captions .btn[data-icon="game-debuff"] { flex-direction: column; gap: 2px; }
+body.icon-mode.it-captions .btn[data-icon="game-debuff"] .btn-icon { width: 24px; height: 24px; }
+body.icon-mode.it-captions .btn[data-icon="game-debuff"] .btn-footer {
+  display: block; font-size: 9px; line-height: 1; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.3px;
+}
+
 .btn-reset {
   padding: 8px 20px;
   background: var(--sel-fake-bg);
@@ -219,13 +234,19 @@ body.icon-mode .btn[data-icon] .btn-icon { display: flex; align-items: center; j
 .ready-check-banner.timed-out { border-color: var(--col-fake); background: var(--sel-fake-bg); }
 .ready-check-actions { margin-left: auto; display: flex; gap: 8px; }
 .option-row {
-  display: flex; align-items: center; gap: 8px;
+  display: flex; align-items: center; gap: 20px;
   margin-top: 12px; padding-top: 12px;
   border-top: 1px solid var(--border);
   font-size: 13px; color: var(--text-dim);
-  cursor: pointer; user-select: none;
+  user-select: none;
 }
 .option-row input[type="checkbox"] { width: 15px; height: 15px; accent-color: var(--col-real); cursor: pointer; }
+.option-row input[type="checkbox"]:disabled { cursor: not-allowed; }
+/* A single .option-row can hold more than one checkbox (see icon-mode +
+   it-captions below) - each gets its own .option-check label so only that
+   one dims when disabled, not the whole row. */
+.option-check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.option-check:has(input:disabled) { opacity: 0.45; cursor: default; }
 
 /* ── Main card (two columns, equal height) ───────────────────────────────── */
 .main-card {
@@ -323,12 +344,14 @@ body.icon-mode .btn[data-icon] .btn-icon { display: flex; align-items: center; j
 }
 .scard-icon { width: 52px; height: 52px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .scard-icon svg { width: 52px; height: 52px; }
+.scard-icon img { width: 52px; height: 52px; object-fit: contain; }
 .scard-icon.dim { opacity: 0.10; }
 .scard-val { font-size: 17px; font-weight: 700; text-align: center; line-height: 1.1; min-height: 1.4em; }
 
 .tb-inner  { display: flex; flex-direction: column; gap: 10px; width: 100%; margin-top: 4px; flex: 1; justify-content: center; }
 .tb-row    { display: flex; align-items: center; gap: 10px; justify-content: center; }
 .tb-n      { font-size: 11px; color: var(--text-dim); width: 56px; text-align: right; flex-shrink: 0; }
+.tb-n.active { font-weight: 700; }
 .tb-icon   { width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .tb-icon svg { width: 38px; height: 38px; }
 .tb-icon.dim { opacity: 0.10; }
@@ -423,14 +446,20 @@ body.icon-mode .btn[data-icon] .btn-icon { display: flex; align-items: center; j
         <button class="btn" onclick="Session.cancelReadyCheck()">Cancel</button>
       </span>
     </div>
-    <label class="option-row">
+    <label class="option-row option-check">
       <input type="checkbox" id="enforce-order-cb" onchange="toggleEnforceOrder()">
       Enforce mechanic order (require #1 before #2 can be set)
     </label>
-    <label class="option-row">
-      <input type="checkbox" id="icon-mode-cb" onchange="toggleIconMode()">
-      Icon mode (show icons instead of button text)
-    </label>
+    <div class="option-row">
+      <label class="option-check">
+        <input type="checkbox" id="icon-mode-cb" onchange="toggleIconMode()">
+        Icon mode (show icons instead of button text)
+      </label>
+      <label class="option-check">
+        <input type="checkbox" id="it-captions-cb" onchange="toggleItCaptions()">
+        Inferno/Tsunami captions
+      </label>
+    </div>
   </div>
 
   <div class="main-card">
@@ -557,12 +586,12 @@ body.icon-mode .btn[data-icon] .btn-icon { display: flex; align-items: center; j
       <div class="scard-label">Gaze</div>
       <div class="tb-inner">
         <div class="tb-row">
-          <span class="tb-n">1st GCO</span>
+          <span class="tb-n" id="gn-gz1">1st GCO</span>
           <div class="tb-icon dim" id="gi-gz1"></div>
           <span class="tb-val c-dim" id="gv-gz1"></span>
         </div>
         <div class="tb-row">
-          <span class="tb-n">2nd GCO</span>
+          <span class="tb-n" id="gn-gz2">2nd GCO</span>
           <div class="tb-icon dim" id="gi-gz2"></div>
           <span class="tb-val c-dim" id="gv-gz2"></span>
         </div>
@@ -574,7 +603,7 @@ body.icon-mode .btn[data-icon] .btn-icon { display: flex; align-items: center; j
       <div class="scard-label">Floor AOE</div>
       <div class="tb-inner">
         <div class="tb-row">
-          <span class="tb-n">Inferno</span>
+          <span class="tb-n" id="tn-inf">Inferno</span>
           <div class="tb-icon dim" id="si-inf"></div>
           <div class="tb-valcol">
             <span class="tb-val c-dim" id="sv-inf"></span>
@@ -582,7 +611,7 @@ body.icon-mode .btn[data-icon] .btn-icon { display: flex; align-items: center; j
           </div>
         </div>
         <div class="tb-row">
-          <span class="tb-n">Tsunami</span>
+          <span class="tb-n" id="tn-tsu">Tsunami</span>
           <div class="tb-icon dim" id="si-tsu"></div>
           <div class="tb-valcol">
             <span class="tb-val c-dim" id="sv-tsu"></span>
@@ -597,12 +626,12 @@ body.icon-mode .btn[data-icon] .btn-icon { display: flex; align-items: center; j
       <div class="scard-label">Thunder & Blizzard</div>
       <div class="tb-inner">
         <div class="tb-row">
-          <span class="tb-n">Thunder</span>
+          <span class="tb-n" id="tn-thr">Thunder</span>
           <div class="tb-icon dim" id="si-thr"></div>
           <span class="tb-val c-dim" id="sv-thr"></span>
         </div>
         <div class="tb-row">
-          <span class="tb-n">Blizzard</span>
+          <span class="tb-n" id="tn-blz">Blizzard</span>
           <div class="tb-icon dim" id="si-blz"></div>
           <span class="tb-val c-dim" id="sv-blz"></span>
         </div>
