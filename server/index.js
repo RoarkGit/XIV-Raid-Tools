@@ -81,9 +81,13 @@ function clearReadyCheck(id) {
 const server = http.createServer((_req, res) => { res.writeHead(200); res.end('OK'); });
 const wss = new WebSocketServer({ server });
 
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
   ws._room = null;
   ws._client = 'webapp'; // overwritten below if create/join's payload says otherwise
+  // Railway terminates TLS and proxies the connection, so the socket's own
+  // remoteAddress is Railway's proxy, not the caller - the real client IP
+  // only shows up in the forwarded-for header it sets.
+  ws._ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress;
 
   ws.on('message', (raw) => {
     let msg;
@@ -110,6 +114,7 @@ wss.on('connection', (ws) => {
       if (password) roomPasswords.set(id, password);
       ws._room = id;
       if (msg.client === 'plugin') ws._client = 'plugin';
+      console.log(`[create] room=${id} ip=${ws._ip} client=${ws._client}`);
       ws.send(JSON.stringify({ type: 'created', room: id, hasPassword: !!password }));
       broadcastCount(id);
 
