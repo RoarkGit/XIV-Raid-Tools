@@ -29,11 +29,12 @@ public sealed class Plugin : IDalamudPlugin
     public Plugin()
     {
         _configuration = PluginInterface.GetPluginConfig() as Configuration ?? new Configuration();
-        _session = new SessionClient<MechState>(Log, _configuration, new MechState());
-        _kefkaWindow = new KefkaSaysWindow(_session, new GameIcons(DataManager, TextureProvider));
+        _session = new SessionClient<MechState>(Log, new MechState());
+        _kefkaWindow = new KefkaSaysWindow(_session, new GameIcons(DataManager, TextureProvider), _configuration);
         _configWindow = new ConfigWindow(_configuration, () => PluginInterface.SavePluginConfig(_configuration));
         _historyWindow = new PullHistoryWindow(_session, _kefkaWindow);
         _kefkaWindow.HistoryWindow = _historyWindow;
+        _kefkaWindow.SettingsWindow = _configWindow;
         // KefkaSaysWindow must be added (and therefore Draw, refreshing
         // CurrentPos/CurrentSize) before PullHistoryWindow each frame, so
         // the popout's anchor position is never a frame stale.

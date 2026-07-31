@@ -9,14 +9,12 @@ public sealed class ConfigWindow : Window
 {
     private readonly Configuration _config;
     private readonly Action _save;
-    private string _relayUrlInput;
 
     public ConfigWindow(Configuration config, Action save) : base("XIV Raid Tools Settings##XrtConfig")
     {
         _config = config;
         _save = save;
-        _relayUrlInput = config.RelayUrlOverride;
-        Size = new Vector2(440, 130);
+        Size = new Vector2(440, 90);
         SizeCondition = ImGuiCond.FirstUseEver;
     }
 
@@ -25,11 +23,10 @@ public sealed class ConfigWindow : Window
 
     public override void Draw()
     {
-        ImGui.TextWrapped("Relay server URL. Leave blank to use the default public relay.");
-        ImGui.SetNextItemWidth(-1);
-        if (ImGui.InputTextWithHint("##relayurl", SessionDefaults.DefaultWsUrl, ref _relayUrlInput, 256))
+        var showTooltips = _config.ShowTooltips;
+        if (ImGui.Checkbox("Show hover tooltips", ref showTooltips))
         {
-            _config.RelayUrlOverride = _relayUrlInput;
+            _config.ShowTooltips = showTooltips;
             _save();
         }
     }

@@ -1,6 +1,7 @@
 using System;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Interface;
 using Dalamud.Interface.Windowing;
 
 namespace XIVRaidToolsPlugin.Windows;
@@ -16,6 +17,7 @@ public sealed class KefkaSaysWindow : Window
 
     private readonly SessionClient<MechState> _session;
     private readonly GameIcons _gameIcons;
+    private readonly Configuration _config;
     private string _roomInput = "";
     private string _passwordInput = "";
 
@@ -24,6 +26,11 @@ public sealed class KefkaSaysWindow : Window
     // other's). PullHistoryWindow reads CurrentPos/CurrentSize below to
     // anchor itself just right of this window (see its PreDraw).
     public PullHistoryWindow? HistoryWindow { private get; set; }
+
+    // Same assign-after-construction pattern as HistoryWindow above - lets a
+    // click on the top bar's Settings button open the same ConfigWindow
+    // Dalamud's own gear icon (OpenConfigUi) opens.
+    public ConfigWindow? SettingsWindow { private get; set; }
 
     // Window.Position/Size are only the *requested* placement (unset here,
     // since this window floats free/draggable), so the actual on-screen
@@ -38,10 +45,16 @@ public sealed class KefkaSaysWindow : Window
     private readonly float _uiScale = 1f;
     private float Sc(float px) => px * _uiScale;
 
-    public KefkaSaysWindow(SessionClient<MechState> session, GameIcons gameIcons) : base("Kefka Says##KefkaSaysMain")
+    // Every hover tooltip in this window checks IsItemHovered AND the
+    // Settings checkbox - centralized here so ShowTooltips is the only gate
+    // that can be missed, rather than repeated inline at each call site.
+    private bool TooltipsEnabled(ImGuiHoveredFlags flags = ImGuiHoveredFlags.None) => _config.ShowTooltips && ImGui.IsItemHovered(flags);
+
+    public KefkaSaysWindow(SessionClient<MechState> session, GameIcons gameIcons, Configuration config) : base("Kefka Says##KefkaSaysMain")
     {
         _session = session;
         _gameIcons = gameIcons;
+        _config = config;
         // Plain resizable window with a generous initial size (remembered
         // after the user's first manual resize via FirstUseEver). The two
         // columns matching each other doesn't need the window itself to be
@@ -56,6 +69,19 @@ public sealed class KefkaSaysWindow : Window
         // in-game HUD real estate is precious and this was too big before.
         Size = new Vector2(680, 560);
         SizeCondition = ImGuiCond.FirstUseEver;
+
+        // Gear icon next to the window's own collapse/close buttons, same
+        // spot Dalamud's own /xlplugins gear icon lives - opens the same
+        // ConfigWindow as OpenConfigUi (see Plugin.cs's SettingsWindow wiring).
+        TitleBarButtons.Add(new TitleBarButton
+        {
+            Icon = FontAwesomeIcon.Cog,
+            ShowTooltip = () => { if (_config.ShowTooltips) ImGui.SetTooltip("Settings"); },
+            Click = _ =>
+            {
+                if (SettingsWindow is { } cw) cw.IsOpen = !cw.IsOpen;
+            },
+        });
     }
 
     public override void PreDraw() => Theme.PushWindowChrome();
@@ -210,7 +236,7 @@ public sealed class KefkaSaysWindow : Window
                     // Not sensitive enough to hide from someone already in
                     // the room - the share link already carries it in plain
                     // text (see copyRoom() in kefka-says's session.js).
-                    if (ImGui.IsItemHovered()) ImGui.SetTooltip($"Password: {_session.Password}");
+                    if (TooltipsEnabled()) ImGui.SetTooltip($"Password: {_session.Password}");
                 }
                 ImGui.SameLine();
                 if (ImGui.Button("Leave")) _session.Leave();
@@ -246,14 +272,14 @@ public sealed class KefkaSaysWindow : Window
                 // No room on the webapp's session-card for a standing hint
                 // here - a hover tooltip carries the same "leave it blank"
                 // note instead (see index.html's .session-hint).
-                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Leave the code blank to create a room with a random one.");
+                if (TooltipsEnabled()) ImGui.SetTooltip("Leave the code blank to create a room with a random one.");
                 ImGui.SameLine();
                 ImGui.SetNextItemWidth(60);
                 // EnterReturnsTrue mirrors the webapp's room-input onkeydown
                 // handler (index.html) - Enter joins the same as clicking Join.
                 var enterPressed = ImGui.InputTextWithHint("##room", "Code", ref _roomInput, 4,
                     ImGuiInputTextFlags.CharsUppercase | ImGuiInputTextFlags.EnterReturnsTrue);
-                if (ImGui.IsItemHovered()) ImGui.SetTooltip("Leave the code blank to create a room with a random one.");
+                if (TooltipsEnabled()) ImGui.SetTooltip("Leave the code blank to create a room with a random one.");
                 if ((enterPressed || joinClicked) && (_roomInput.Length == 0 || _roomInput.Length == 4))
                     _ = _session.JoinOrCreateAsync(_roomInput, _passwordInput);
                 ImGui.SameLine();
@@ -272,7 +298,9 @@ public sealed class KefkaSaysWindow : Window
 
         // .btn-reset sits top-right of .page-header in the webapp; right-align
         // it (and History, right next to it) here rather than tack them onto
-        // this row's natural flow.
+        // this row's natural flow. Settings lives in the title bar instead
+        // (see the constructor's TitleBarButtons setup) since it's a
+        // window-chrome-level action, not a session control.
         var resetLabel = "Reset";
         var resetW = ImGui.CalcTextSize(resetLabel).X + ImGui.GetStyle().FramePadding.X * 2;
         var historyLabel = $"History ({s.PullHistory.Count})";
@@ -515,7 +543,7 @@ public sealed class KefkaSaysWindow : Window
         icon(ImGui.GetWindowDrawList(), new Vector2(min.X + (width - iconSize) / 2f, min.Y + (height - iconSize) / 2f),
             iconSize, iconColor);
 
-        if (!disabled && tooltip is not null && ImGui.IsItemHovered())
+        if (!disabled && tooltip is not null && TooltipsEnabled())
         {
             ImGui.BeginTooltip();
             const float previewSize = 64f;
@@ -564,7 +592,7 @@ public sealed class KefkaSaysWindow : Window
         if (IconAccentButton($"{id}fake", Icons.Cross, current == RF.Fake, AccentTag.Fake, disabled, width, height, "Fake"))
             onSet(RF.Fake);
         ImGui.EndGroup();
-        if (disabled && tooltip is not null && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+        if (disabled && tooltip is not null && TooltipsEnabled(ImGuiHoveredFlags.AllowWhenDisabled))
             ImGui.SetTooltip(tooltip);
     }
 
@@ -597,7 +625,7 @@ public sealed class KefkaSaysWindow : Window
         if (IconAccentButton($"g{gco}accel", _gameIcons.AccelBomb ?? Icons.Bomb, accel, AccentTag.Accel, accelDisabled, width, height, "Acceleration Bomb", isRealIcon: _gameIcons.AccelBomb is not null))
             s.ToggleAccel(gco);
         ImGui.EndGroup();
-        if (showTooltipWhen && ImGui.IsItemHovered(ImGuiHoveredFlags.AllowWhenDisabled))
+        if (showTooltipWhen && TooltipsEnabled(ImGuiHoveredFlags.AllowWhenDisabled))
             ImGui.SetTooltip(tooltip);
     }
 

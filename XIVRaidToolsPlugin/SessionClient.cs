@@ -11,17 +11,6 @@ namespace XIVRaidToolsPlugin;
 
 public enum SessionStatus { Idle, Connecting, Active, Reconnecting }
 
-// Non-generic home for members that don't depend on TState - referencing a
-// generic class's static members from outside always needs a type argument
-// (SessionClient<MechState>.Foo), which is awkward for something like a
-// config UI's URL hint that has nothing to do with any tool's state shape.
-public static class SessionDefaults
-{
-    // Same production URL as kefka-says/session.js's WS_URL. Overridable
-    // per-user via Configuration.RelayUrlOverride (see Windows/ConfigWindow.cs).
-    public const string DefaultWsUrl = "wss://xiv-raid-tools-production.up.railway.app";
-}
-
 // Speaks the exact same protocol as kefka-says/session.js's connectWS/syncState:
 // {type:'create'} / {type:'join',room} -> {type:'created'|'joined',room}
 // {type:'state', state:{...}} broadcast to the rest of the room
@@ -38,6 +27,9 @@ public static class SessionDefaults
 // no in-game equivalent and a raid-night WS blip shouldn't lose the room.
 public sealed class SessionClient<TState> : IDisposable where TState : ISyncedState
 {
+    // Same production URL as kefka-says/session.js's WS_URL.
+    private const string DefaultWsUrl = "wss://xiv-raid-tools-production.up.railway.app";
+
     private static readonly TimeSpan[] ReconnectDelays =
     {
         TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5),
@@ -45,13 +37,7 @@ public sealed class SessionClient<TState> : IDisposable where TState : ISyncedSt
     };
 
     private readonly IPluginLog _log;
-    private readonly Configuration _config;
     private readonly CancellationTokenSource _lifecycle = new();
-
-    // Read fresh on every connect attempt (not captured once) so a relay URL
-    // change in ConfigWindow takes effect on the next create/join/reconnect
-    // without needing a plugin restart.
-    private string WsUrl => string.IsNullOrWhiteSpace(_config.RelayUrlOverride) ? SessionDefaults.DefaultWsUrl : _config.RelayUrlOverride.Trim();
 
     private ClientWebSocket? _ws;
     private CancellationTokenSource? _connCts;
@@ -102,10 +88,9 @@ public sealed class SessionClient<TState> : IDisposable where TState : ISyncedSt
     // so this exists for a subscriber (Plugin.cs) to surface it in chat.
     public event Action<string>? SessionError;
 
-    public SessionClient(IPluginLog log, Configuration config, TState state)
+    public SessionClient(IPluginLog log, TState state)
     {
         _log = log;
-        _config = config;
         State = state;
     }
 
@@ -175,7 +160,7 @@ public sealed class SessionClient<TState> : IDisposable where TState : ISyncedSt
         var cts = CancellationTokenSource.CreateLinkedTokenSource(_lifecycle.Token);
         try
         {
-            await ws.ConnectAsync(new Uri(WsUrl), cts.Token);
+            await ws.ConnectAsync(new Uri(DefaultWsUrl), cts.Token);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
