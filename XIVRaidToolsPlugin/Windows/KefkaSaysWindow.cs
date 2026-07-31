@@ -290,11 +290,13 @@ public sealed class KefkaSaysWindow : Window
         }
 
         var enforceOrder = s.EnforceOrder;
+        ImGui.BeginDisabled(_config.DisablePartySync);
         if (ImGui.Checkbox("Enforce order", ref enforceOrder))
         {
             s.EnforceOrder = enforceOrder;
             _session.PushState();
         }
+        ImGui.EndDisabled();
 
         // .btn-reset sits top-right of .page-header in the webapp; right-align
         // it (and History, right next to it) here rather than tack them onto
@@ -345,13 +347,17 @@ public sealed class KefkaSaysWindow : Window
         var pos = gco == 1 ? s.G1Pos : s.G2Pos;
         var accel = gco == 1 ? s.G1Accel : s.G2Accel;
 
-        bool rfDisabled = false, posDisabled = false, accelDisabled = false, g1PosOrder = false;
+        // rfDisabled starts from DisablePartySync (see Real/Fake being the
+        // only synced control here - Water/Lightning/Accel Bomb below never
+        // PushState, so they're left out of that gate) and gco==2 ORs in
+        // the enforce-order gate on top.
+        bool rfDisabled = _config.DisablePartySync, posDisabled = false, accelDisabled = false, g1PosOrder = false;
         if (gco == 2)
         {
             var g1Done = s.G1Pos != Pos.None || s.G1Accel;
             var g1Order = s.EnforceOrder && s.G1Rf == RF.None;
             g1PosOrder = s.EnforceOrder && !g1Done;
-            rfDisabled = g1Order;
+            rfDisabled = rfDisabled || g1Order;
             posDisabled = s.G2Accel || g1PosOrder;
             accelDisabled = s.G2Pos != Pos.None || s.G1Accel || g1PosOrder;
         }
@@ -394,13 +400,13 @@ public sealed class KefkaSaysWindow : Window
         // was a deliberate ordering choice, not just a plugin-side quirk).
         if (n == 1)
         {
-            CastRow("floor1cast", s.It1Rf, AccentTag.Real, false, null, SetIt1Rf);
-            TypeRow("floor1type", s.It1Type, false, SetType);
+            CastRow("floor1cast", s.It1Rf, AccentTag.Real, _config.DisablePartySync, null, SetIt1Rf);
+            TypeRow("floor1type", s.It1Type, _config.DisablePartySync, SetType);
         }
         else
         {
             var it1Order = s.EnforceOrder && s.It2Type == FloorType.None;
-            CastRow("floor2cast", s.It2Rf, AccentTag.Real, it1Order, "Set Floor AOE #1 Type first", SetIt2Rf);
+            CastRow("floor2cast", s.It2Rf, AccentTag.Real, _config.DisablePartySync || it1Order, "Set Floor AOE #1 Type first", SetIt2Rf);
 
             // Floor AOE #2's Type row is permanently disabled in app.js too
             // (<button disabled> in the HTML) - it only ever displays the
@@ -451,7 +457,7 @@ public sealed class KefkaSaysWindow : Window
             // Fake is always tagged red - matches app.js's
             // btnCls('thr',...,'thunder') vs btnCls('thf',...,'fake') asymmetry.
             ImGui.TableNextColumn();
-            GroupCard("Thunder", () => CastRow("thunder", s.ThunderRf, AccentTag.Thunder, false, null,
+            GroupCard("Thunder", () => CastRow("thunder", s.ThunderRf, AccentTag.Thunder, _config.DisablePartySync, null,
                 v =>
                 {
                     // Same click-race guard as SetRf - see MechState.WasJustSetRemotely.
@@ -461,7 +467,7 @@ public sealed class KefkaSaysWindow : Window
                 }));
 
             ImGui.TableNextColumn();
-            GroupCard("Blizzard", () => CastRow("blizzard", s.BlizzardRf, AccentTag.Blizzard, false, null,
+            GroupCard("Blizzard", () => CastRow("blizzard", s.BlizzardRf, AccentTag.Blizzard, _config.DisablePartySync, null,
                 v =>
                 {
                     if (s.BlizzardRf == v && s.WasJustSetRemotely("blizzardRF")) return;

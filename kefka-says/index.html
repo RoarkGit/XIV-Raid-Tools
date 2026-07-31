@@ -81,7 +81,7 @@ body {
 .btn:hover:not(:disabled):not([class*="on-"]) {
   background: var(--btn-hover); color: var(--text);
 }
-.btn:disabled { opacity: 0.25; cursor: not-allowed; pointer-events: none; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
 .btn.on-real      { background: var(--sel-real-bg);  border-color: #253a2e; color: var(--col-real); }
 .btn.on-fake      { background: var(--sel-fake-bg);  border-color: #4a1818; color: var(--col-fake); }
 .btn.on-water     { background: var(--sel-water-bg); border-color: #162636; color: var(--col-water); }
@@ -458,6 +458,10 @@ body.icon-mode.it-captions .btn[data-icon="game-debuff"] .btn-footer {
       <label class="option-check">
         <input type="checkbox" id="it-captions-cb" onchange="toggleItCaptions()">
         Inferno/Tsunami captions
+      </label>
+      <label class="option-check">
+        <input type="checkbox" id="disable-sync-cb" onchange="toggleDisableSync()">
+        Disable synced buttons (avoid accidentally changing party state)
       </label>
     </div>
   </div>

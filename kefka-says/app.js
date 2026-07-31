@@ -360,8 +360,6 @@ function render() {
   const g1Done  = !!(S.g1pos || S.g1accel);
   const g1Order = S.enforceOrder && !S.g1rf;
   const g1PosOrder = S.enforceOrder && !g1Done;
-  document.getElementById('g2r').disabled  = g1Order;
-  document.getElementById('g2f').disabled  = g1Order;
   document.getElementById('g2wa').disabled = S.g2accel || g1PosOrder;
   document.getElementById('g2li').disabled = S.g2accel || g1PosOrder;
   document.getElementById('g2ac').disabled = !!S.g2pos || S.g1accel || g1PosOrder;
@@ -378,10 +376,9 @@ function render() {
   hint('t2type-group', true, 'Automatically set from Floor AOE #1 type');
 
   const it1Order = S.enforceOrder && !t2;
-  document.getElementById('i2r').disabled = it1Order;
-  document.getElementById('i2f').disabled = it1Order;
   hint('i2rf-group', it1Order, 'Set Floor AOE #1 Type first');
 
+  updateSyncButtonDisabled();
   renderStatusIcons();
 
   // Gaze
@@ -555,6 +552,54 @@ function toggleItCaptions() {
   setItCaptions(document.getElementById('it-captions-cb').checked);
 }
 
+// ── Disable synced buttons ──────────────────────────────────────────────
+// A personal safety toggle, same localStorage/per-browser treatment as
+// icon mode: when on, every button that broadcasts to the room (i.e. every
+// SYNC_KEYS field's control, see render()) gets disabled so a misclick
+// can't overwrite what the rest of the party is relying on. Water/
+// Lightning/Accel Bomb are already personal-only (PERSONAL_KEYS) and stay
+// untouched - this only covers buttons that would otherwise sync out.
+const DISABLE_SYNC_KEY = 'kefkaDisableSync';
+const SYNC_BTN_IDS = [
+  'g1r', 'g1f', 't1i', 't1t', 'i1r', 'i1f',
+  'g2r', 'g2f', 'i2r', 'i2f', 'thr', 'thf', 'blr', 'blf',
+];
+let disableSyncButtons = false;
+
+// Recomputes the order-gating (g1Order/it1Order, see render()) itself so it
+// can run standalone from setDisableSync() without a full render() - a
+// purely local preference flipping shouldn't also fire an unrelated
+// syncState() push (see setIconMode()'s comment for the same concern).
+function updateSyncButtonDisabled() {
+  const g1Order = S.enforceOrder && !S.g1rf;
+  const it1Order = S.enforceOrder && !it2type();
+  document.getElementById('g1r').disabled = disableSyncButtons;
+  document.getElementById('g1f').disabled = disableSyncButtons;
+  document.getElementById('t1i').disabled = disableSyncButtons;
+  document.getElementById('t1t').disabled = disableSyncButtons;
+  document.getElementById('i1r').disabled = disableSyncButtons;
+  document.getElementById('i1f').disabled = disableSyncButtons;
+  document.getElementById('g2r').disabled = disableSyncButtons || g1Order;
+  document.getElementById('g2f').disabled = disableSyncButtons || g1Order;
+  document.getElementById('i2r').disabled = disableSyncButtons || it1Order;
+  document.getElementById('i2f').disabled = disableSyncButtons || it1Order;
+  document.getElementById('thr').disabled = disableSyncButtons;
+  document.getElementById('thf').disabled = disableSyncButtons;
+  document.getElementById('blr').disabled = disableSyncButtons;
+  document.getElementById('blf').disabled = disableSyncButtons;
+  document.getElementById('enforce-order-cb').disabled = disableSyncButtons;
+}
+
+function setDisableSync(on) {
+  disableSyncButtons = on;
+  localStorage.setItem(DISABLE_SYNC_KEY, on ? '1' : '0');
+  updateSyncButtonDisabled();
+}
+
+function toggleDisableSync() {
+  setDisableSync(document.getElementById('disable-sync-cb').checked);
+}
+
 // ── Init ───────────────────────────────────────────────────────────────────
 function initPlaceholders() {
   function ph(id, svg) { const el = document.getElementById(id); el.innerHTML = svg; el.dataset.ph = svg; }
@@ -582,6 +627,10 @@ setIconMode(_iconModeOn);
 const _itCaptionsOn = localStorage.getItem(IT_CAPTIONS_KEY) === '1';
 document.getElementById('it-captions-cb').checked = _itCaptionsOn;
 setItCaptions(_itCaptionsOn);
+
+const _disableSyncOn = localStorage.getItem(DISABLE_SYNC_KEY) === '1';
+document.getElementById('disable-sync-cb').checked = _disableSyncOn;
+setDisableSync(_disableSyncOn);
 
 // Registers this tool's fields with the shared session layer, and (as part
 // of that) auto-joins if the URL carries ?room=XXXX from a shared link

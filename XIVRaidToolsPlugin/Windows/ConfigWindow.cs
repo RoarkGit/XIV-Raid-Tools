@@ -14,7 +14,7 @@ public sealed class ConfigWindow : Window
     {
         _config = config;
         _save = save;
-        Size = new Vector2(440, 90);
+        Size = new Vector2(440, 110);
         SizeCondition = ImGuiCond.FirstUseEver;
     }
 
@@ -27,6 +27,13 @@ public sealed class ConfigWindow : Window
         if (ImGui.Checkbox("Show hover tooltips", ref showTooltips))
         {
             _config.ShowTooltips = showTooltips;
+            _save();
+        }
+
+        var disablePartySync = _config.DisablePartySync;
+        if (ImGui.Checkbox("Disable synced buttons (avoid accidentally changing party state)", ref disablePartySync))
+        {
+            _config.DisablePartySync = disablePartySync;
             _save();
         }
     }
