@@ -338,7 +338,10 @@ public sealed class SessionClient<TState> : IDisposable where TState : ISyncedSt
     private void CancelCurrentConnection()
     {
         _connCts?.Cancel();
+        _connCts?.Dispose();
+        _connCts = null;
         _ws?.Abort();
+        _ws?.Dispose();
         _ws = null;
     }
 
@@ -347,5 +350,6 @@ public sealed class SessionClient<TState> : IDisposable where TState : ISyncedSt
         _desiredRoom = null;
         _lifecycle.Cancel();
         CancelCurrentConnection();
+        _lifecycle.Dispose();
     }
 }
