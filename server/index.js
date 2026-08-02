@@ -35,11 +35,35 @@ function webappCount(id) {
   return n;
 }
 
+// Per-IP, pair off plugin vs. webapp connections rather than collapsing the
+// whole IP to 1 - the same person often has both the webapp tab and the
+// Dalamud plugin connected at once (that pair should count as 1), but two
+// different people behind the same NAT (same house/LAN) each running their
+// own plugin should still count as 2. Taking max(pluginCount, webappCount)
+// per IP achieves both: one plugin + one webapp at an IP is 1 pair -> 1;
+// two plugins (+ zero or two webapps) at an IP is 2 people's clients -> 2.
+// Still wrong if one housemate uses ONLY the webapp and the other ONLY the
+// plugin (pairs off as 1 when it's really 2) - there's no signal here to
+// tell that apart from one person's own plugin+webapp pair, since the
+// plugin is the primary interface this can't fully avoid.
+function connectedCount(id) {
+  if (!rooms.has(id)) return 0;
+  const perIp = new Map(); // ip -> { plugin, webapp }
+  for (const client of rooms.get(id)) {
+    const entry = perIp.get(client._ip) || { plugin: 0, webapp: 0 };
+    if (client._client === 'plugin') entry.plugin++; else entry.webapp++;
+    perIp.set(client._ip, entry);
+  }
+  let total = 0;
+  for (const { plugin, webapp } of perIp.values()) total += Math.max(plugin, webapp);
+  return total;
+}
+
 // Broadcast (not just to the client that just joined/left) since everyone
 // already in the room needs their own "N connected" display to update too.
 function broadcastCount(id) {
   if (!rooms.has(id)) return;
-  const payload = JSON.stringify({ type: 'count', count: rooms.get(id).size });
+  const payload = JSON.stringify({ type: 'count', count: connectedCount(id) });
   for (const client of rooms.get(id)) {
     if (client.readyState === WebSocket.OPEN) client.send(payload);
   }
