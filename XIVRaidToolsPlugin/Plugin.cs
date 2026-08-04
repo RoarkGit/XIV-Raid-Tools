@@ -143,12 +143,12 @@ public sealed class Plugin : IDalamudPlugin
                 break;
 
             case "thunder" when arg1 is "real" or "fake":
-                ToggleRf(ref s.ThunderRf, ParseRf(arg1));
+                SetRfIdempotent(ref s.ThunderRf, ParseRf(arg1));
                 _session.PushState();
                 break;
 
             case "blizzard" when arg1 is "real" or "fake":
-                ToggleRf(ref s.BlizzardRf, ParseRf(arg1));
+                SetRfIdempotent(ref s.BlizzardRf, ParseRf(arg1));
                 _session.PushState();
                 break;
 
@@ -176,8 +176,20 @@ public sealed class Plugin : IDalamudPlugin
 
     private static RF ParseRf(string arg) => arg == "real" ? RF.Real : RF.Fake;
 
-    // Toggle-off-on-repeat, same as clicking an already-selected Cast button.
-    private static void ToggleRf(ref RF field, RF value) => field = field == value ? RF.None : value;
+    // Unlike the window's own click handlers (SetRf/SetIt1Rf/SetIt2Rf, the
+    // Thunder/Blizzard closures - see KefkaSaysWindow), which deliberately
+    // toggle off on a second click, slash commands set a Cast value
+    // idempotently: calling the same value again just confirms it, it never
+    // un-calls it. A manual click toggling off on repeat is a reasonable
+    // affordance, but a macro/trigger can legitimately fire the exact same
+    // command many times for what's logically one game event - confirmed by
+    // a real Telesto EasyTrigger log showing 13 identical
+    // "/xrt kefka gco bomb" sends in under 2 seconds for a single debuff
+    // application. Toggling off on repeat there would mean the outcome
+    // depends on whether that burst happens to land on an odd or even
+    // count, which is exactly what was happening. Only the opposite value
+    // or Reset changes it away from an already-set value now.
+    private static void SetRfIdempotent(ref RF field, RF value) => field = value;
 
     // "gco real"/"gco fake" targets whichever GCO's Cast is still unresolved
     // (G1 first, then G2) - once both are set, there's nothing left to call
@@ -210,6 +222,27 @@ public sealed class Plugin : IDalamudPlugin
                 var gco = s.G1Pos == Pos.None && !s.G1Accel ? 1 : s.G2Pos == Pos.None && !s.G2Accel ? 2 : 0;
                 if (gco == 0)
                 {
+                    // Both slots are already resolved - but SetPos auto-derives
+                    // the OTHER slot's assignment the instant either water or
+                    // lightning is called (see MechState.SetPos's comment: one
+                    // target gets the debuff, the other necessarily gets the
+                    // bomb), so a single water/lightning call alone always
+                    // reaches this state. If what's being called now is
+                    // exactly what that auto-derivation already produced, this
+                    // isn't a conflicting call, just a redundant confirmation
+                    // (e.g. the bomb-haver calling "bomb" after a teammate's
+                    // water call already implied it) - treat that as a
+                    // harmless no-op instead of an error, same as the RF
+                    // race guard's "confirm, don't complain" treatment.
+                    var alreadyConsistent = arg switch
+                    {
+                        "water" => s.G1Pos == Pos.Water || s.G2Pos == Pos.Water,
+                        "lightning" => s.G1Pos == Pos.Lightning || s.G2Pos == Pos.Lightning,
+                        "bomb" => s.G1Accel || s.G2Accel,
+                        _ => false,
+                    };
+                    if (alreadyConsistent) return true;
+
                     ReportInvalidCommand("XIV Raid Tools: both GCO debuffs are already assigned, reset first. "
                         + "Use gco1/gco2 to target a specific one directly instead.");
                     return false;
@@ -245,7 +278,7 @@ public sealed class Plugin : IDalamudPlugin
     {
         var s = _session.State;
         var v = ParseRf(arg);
-        if (gco == 1) ToggleRf(ref s.G1Rf, v); else ToggleRf(ref s.G2Rf, v);
+        if (gco == 1) SetRfIdempotent(ref s.G1Rf, v); else SetRfIdempotent(ref s.G2Rf, v);
         _session.PushState();
         return true;
     }
@@ -254,14 +287,27 @@ public sealed class Plugin : IDalamudPlugin
     // BuildSharedState's payload (personal, unsynced fields), so pushing
     // after only one of these changing would send the room's already-synced
     // fields unchanged. Matches KefkaSaysWindow's DebuffsRow buttons.
+    //
+    // gco1/gco2 (explicit) route straight here with no "already resolved"
+    // gate (see HandleGcoExplicit's comment - unlike the auto-pick "gco"
+    // path, there's no ambiguity about which slot to target). But SetPos's
+    // auto-derivation (see its own comment) can leave a slot's Accel true
+    // without THIS command ever having been called for it - a redundant
+    // explicit confirmation of that already-correct value would otherwise
+    // hit ToggleAccel/SetPos's unconditional flip and un-set it. Guard each
+    // case against its own already-matching value first, same "confirm,
+    // don't corrupt" treatment as the auto-pick path's alreadyConsistent
+    // check above.
     private bool ApplyGcoDebuff(int gco, string arg)
     {
         var s = _session.State;
+        var pos = gco == 1 ? s.G1Pos : s.G2Pos;
+        var accel = gco == 1 ? s.G1Accel : s.G2Accel;
         switch (arg)
         {
-            case "water": s.SetPos(gco, Pos.Water); break;
-            case "lightning": s.SetPos(gco, Pos.Lightning); break;
-            case "bomb": s.ToggleAccel(gco); break;
+            case "water": if (pos != Pos.Water) s.SetPos(gco, Pos.Water); break;
+            case "lightning": if (pos != Pos.Lightning) s.SetPos(gco, Pos.Lightning); break;
+            case "bomb": if (!accel) s.ToggleAccel(gco); break;
         }
         return true;
     }
@@ -275,8 +321,8 @@ public sealed class Plugin : IDalamudPlugin
         var s = _session.State;
         if (s.It1Type == FloorType.None) s.It1Type = type;
 
-        if (s.It1Type == type) ToggleRf(ref s.It1Rf, value);
-        else ToggleRf(ref s.It2Rf, value);
+        if (s.It1Type == type) SetRfIdempotent(ref s.It1Rf, value);
+        else SetRfIdempotent(ref s.It2Rf, value);
 
         _session.PushState();
     }
