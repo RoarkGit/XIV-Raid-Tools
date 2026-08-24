@@ -4,9 +4,24 @@ const S = {
   it1type: null, it1rf: null,
   g2rf: null, g2pos: null, g2accel: false,
   it2rf: null,
-  thunderRF: null, blizzardRF: null,
+  thunder1RF: null, thunder2RF: null, blizzard1RF: null, blizzard2RF: null,
   enforceOrder: false,
+  // Some fights only cast Thunder/Blizzard once per phase, others twice -
+  // off (single-cast, cast1 IS the call) is the default/original behavior;
+  // on treats cast1/cast2 as two casts to combine (see combineRf). A
+  // standing room-wide preference like enforceOrder, not per-pull state.
+  twoCastThunderBlizzard: false,
 };
+
+// Thunder and Blizzard are each cast twice per phase in two-cast mode; the
+// call the raid actually needs to react to is the XOR of the two individual
+// casts (matching casts confirm real, differing casts cancel out to fake),
+// not either cast's raw value on its own. null until both casts are in.
+function combineRf(a, b) { return (!a || !b) ? null : (a === 'real') === (b === 'real') ? 'real' : 'fake'; }
+
+// Single-cast mode: cast1 IS the call. Two-cast mode: the call is the XOR
+// of the two casts.
+function finalRf(twoCast, a, b) { return twoCast ? combineRf(a, b) : a; }
 
 function tog(k)    { S[k] = !S[k]; render(); }
 
@@ -41,7 +56,7 @@ function clearLocalDebuffs() { for (const k of PERSONAL_KEYS) S[k] = k.endsWith(
 // clear state doesn't fill this with blank entries. Local per browser (like
 // the personal debuff fields), not synced to the room.
 const PULL_HISTORY_MAX = 20;
-const HISTORY_KEYS = Object.keys(S).filter(k => k !== 'enforceOrder');
+const HISTORY_KEYS = Object.keys(S).filter(k => k !== 'enforceOrder' && k !== 'twoCastThunderBlizzard');
 let pullHistory = []; // most recent first
 
 function isStateEmpty() {
@@ -67,8 +82,13 @@ function describeSnapshot(snap) {
   addGco(1, snap.g1rf, snap.g1pos, snap.g1accel);
   addGco(2, snap.g2rf, snap.g2pos, snap.g2accel);
   if (snap.it1type || snap.it1rf) parts.push(`Floor: ${snap.it1type || ''} ${snap.it1rf || ''}`.trim());
-  if (snap.thunderRF) parts.push(`Thunder: ${snap.thunderRF}`);
-  if (snap.blizzardRF) parts.push(`Blizzard: ${snap.blizzardRF}`);
+  // S.twoCastThunderBlizzard is the CURRENT (live, at display time) setting,
+  // not captured per-snapshot - it's a standing preference, not per-pull
+  // state (see MechState.TwoCastThunderBlizzard's comment in the plugin).
+  const thunderRf = finalRf(S.twoCastThunderBlizzard, snap.thunder1RF, snap.thunder2RF);
+  if (thunderRf) parts.push(`Thunder: ${thunderRf}`);
+  const blizzardRf = finalRf(S.twoCastThunderBlizzard, snap.blizzard1RF, snap.blizzard2RF);
+  if (blizzardRf) parts.push(`Blizzard: ${blizzardRf}`);
   return parts.length ? parts.join(' | ') : '(empty)';
 }
 
@@ -141,7 +161,7 @@ function reset() {
     updateHistoryBadge();
     _pendingHistorySnapshot = snap;
   }
-  for (const k of Object.keys(S)) { if (k !== 'enforceOrder') S[k] = k.endsWith('accel') ? false : null; }
+  for (const k of Object.keys(S)) { if (k !== 'enforceOrder' && k !== 'twoCastThunderBlizzard') S[k] = k.endsWith('accel') ? false : null; }
   _pendingClearDebuffs = true;
   render();
 }
@@ -154,6 +174,11 @@ function recordRemoteHistorySnapshot(snap) {
 
 function toggleEnforceOrder() {
   S.enforceOrder = document.getElementById('enforce-order-cb').checked;
+  render();
+}
+
+function toggleTwoCastThunderBlizzard() {
+  S.twoCastThunderBlizzard = document.getElementById('two-cast-tb-cb').checked;
   render();
 }
 
@@ -333,7 +358,42 @@ function renderStatusIcons() {
   else                       setCard('si-accel','sv-accel', null, null, null, null);
 }
 
+// Thunder/Blizzard's Thunder half and Blizzard half always exist in the
+// same place side by side (see the CSS comment above .tb-side-by-side in
+// index.html) - this just shows/hides each half's 2nd row and 1st-row label
+// for the current mode, nothing to reparent. Cheap to call every render():
+// _tbLayoutMode tracks what's currently shown and no-ops if the mode hasn't
+// actually changed, so this only touches the DOM on genuine single-cast/
+// two-cast switches (whether from this client's own checkbox or a synced
+// change from someone else's - both just flow through render()).
+let _tbLayoutMode = null;
+function layoutThunderBlizzard() {
+  if (_tbLayoutMode === S.twoCastThunderBlizzard) return;
+  _tbLayoutMode = S.twoCastThunderBlizzard;
+
+  const label1t = document.getElementById('tb-label-thunder1');
+  const label1b = document.getElementById('tb-label-blizzard1');
+  const row2t = document.getElementById('tb-row-thunder2');
+  const row2b = document.getElementById('tb-row-blizzard2');
+
+  if (S.twoCastThunderBlizzard) {
+    label1t.textContent = '1st';
+    label1b.textContent = '1st';
+    label1t.style.display = '';
+    label1b.style.display = '';
+    row2t.style.display = '';
+    row2b.style.display = '';
+  } else {
+    label1t.style.display = 'none';
+    label1b.style.display = 'none';
+    row2t.style.display = 'none';
+    row2b.style.display = 'none';
+  }
+}
+
 function render() {
+  layoutThunderBlizzard();
+
   btnCls('g1r',  S.g1rf === 'real',       'real');
   btnCls('g1f',  S.g1rf === 'fake',       'fake');
   btnCls('g1wa', S.g1pos === 'water',     'water');
@@ -350,12 +410,17 @@ function render() {
   btnCls('g2ac', S.g2accel,              'accel');
   btnCls('i2r',  S.it2rf === 'real',      'real');
   btnCls('i2f',  S.it2rf === 'fake',      'fake');
-  btnCls('thr',  S.thunderRF === 'real',  'thunder');
-  btnCls('thf',  S.thunderRF === 'fake',  'fake');
-  btnCls('blr',  S.blizzardRF === 'real', 'blizzard');
-  btnCls('blf',  S.blizzardRF === 'fake', 'fake');
+  btnCls('thr1', S.thunder1RF === 'real',  'thunder');
+  btnCls('thf1', S.thunder1RF === 'fake',  'fake');
+  btnCls('thr2', S.thunder2RF === 'real',  'thunder');
+  btnCls('thf2', S.thunder2RF === 'fake',  'fake');
+  btnCls('blr1', S.blizzard1RF === 'real', 'blizzard');
+  btnCls('blf1', S.blizzard1RF === 'fake', 'fake');
+  btnCls('blr2', S.blizzard2RF === 'real', 'blizzard');
+  btnCls('blf2', S.blizzard2RF === 'fake', 'fake');
 
   document.getElementById('enforce-order-cb').checked = S.enforceOrder;
+  document.getElementById('two-cast-tb-cb').checked = S.twoCastThunderBlizzard;
 
   const g1Done  = !!(S.g1pos || S.g1accel);
   const g1Order = S.enforceOrder && !S.g1rf;
@@ -402,15 +467,27 @@ function render() {
     tsunamiShape ? (tsunamiRF === 'real' ? 'REAL' : 'FAKE') : null,
     tsunamiShape === 'donut' ? 'Stack → stay in' : tsunamiShape === 'circle' ? 'Stack → get out' : null);
 
-  // Thunder & Blizzard
-  setTBRow('si-thr','sv-thr', null, 'tn-thr',
-    S.thunderRF  ? (S.thunderRF  === 'real' ? IC.thunder      : IC.thunderFake)  : null,
-    S.thunderRF  ? (S.thunderRF  === 'real' ? 'c-thr-real'    : 'c-thr-fake')    : null,
-    S.thunderRF  ? (S.thunderRF  === 'real' ? 'REAL'          : 'FAKE')          : null);
-  setTBRow('si-blz','sv-blz', null, 'tn-blz',
-    S.blizzardRF ? (S.blizzardRF === 'real' ? IC.blizzard     : IC.blizzardFake) : null,
-    S.blizzardRF ? (S.blizzardRF === 'real' ? 'c-blz-real'    : 'c-blz-fake')    : null,
-    S.blizzardRF ? (S.blizzardRF === 'real' ? 'REAL'          : 'FAKE')          : null);
+  // Thunder & Blizzard - in two-cast mode, status column shows the combined
+  // (XOR of both casts) result as the headline value, with the two raw
+  // casts it came from as a sub line (blank until at least one is called,
+  // same as Floor AOE's hint staying blank pre-Type/Real-Fake) - lets
+  // players double check the call. In single-cast mode (the default),
+  // cast1 IS the call and there's no second cast to show a breakdown of.
+  const rfWord = (rf) => rf === 'real' ? 'Real' : rf === 'fake' ? 'Fake' : '--';
+  const castSub = (a, b) => (!S.twoCastThunderBlizzard || (!a && !b)) ? null : `${rfWord(a)} & ${rfWord(b)}`;
+
+  const thunderRf = finalRf(S.twoCastThunderBlizzard, S.thunder1RF, S.thunder2RF);
+  setTBRow('si-thr','sv-thr','ss-thr','tn-thr',
+    thunderRf  ? (thunderRf  === 'real' ? IC.thunder      : IC.thunderFake)  : null,
+    thunderRf  ? (thunderRf  === 'real' ? 'c-thr-real'    : 'c-thr-fake')    : null,
+    thunderRf  ? (thunderRf  === 'real' ? 'REAL'          : 'FAKE')          : null,
+    castSub(S.thunder1RF, S.thunder2RF));
+  const blizzardRf = finalRf(S.twoCastThunderBlizzard, S.blizzard1RF, S.blizzard2RF);
+  setTBRow('si-blz','sv-blz','ss-blz','tn-blz',
+    blizzardRf ? (blizzardRf === 'real' ? IC.blizzard     : IC.blizzardFake) : null,
+    blizzardRf ? (blizzardRf === 'real' ? 'c-blz-real'    : 'c-blz-fake')    : null,
+    blizzardRf ? (blizzardRf === 'real' ? 'REAL'          : 'FAKE')          : null,
+    castSub(S.blizzard1RF, S.blizzard2RF));
 
   if (!Session.isApplyingRemote()) syncState();
 }
@@ -420,7 +497,7 @@ function render() {
 // with any future webapp tool); this is just Kefka's own plug into it:
 // which fields sync, and how to apply/re-emit them.
 // Mechanic-wide fields only; player-specific debuffs (g1/g2 pos/accel) stay local
-const SYNC_KEYS = ['g1rf', 'g2rf', 'it1type', 'it1rf', 'it2rf', 'thunderRF', 'blizzardRF', 'enforceOrder'];
+const SYNC_KEYS = ['g1rf', 'g2rf', 'it1type', 'it1rf', 'it2rf', 'thunder1RF', 'thunder2RF', 'blizzard1RF', 'blizzard2RF', 'enforceOrder', 'twoCastThunderBlizzard'];
 
 function sharedState() {
   const out = {};
@@ -468,7 +545,8 @@ const IT_CAPTIONS_KEY = 'kefkaItCaptions';
 const BTN_VECTOR_ICON = {
   g1r: 'check', g1f: 'cross', g2r: 'check', g2f: 'cross',
   i1r: 'check', i1f: 'cross', i2r: 'check', i2f: 'cross',
-  thr: 'check', thf: 'cross', blr: 'check', blf: 'cross',
+  thr1: 'check', thf1: 'cross', thr2: 'check', thf2: 'cross',
+  blr1: 'check', blf1: 'cross', blr2: 'check', blf2: 'cross',
 };
 
 // Water/Lightning/Accel Bomb/Inferno/Tsunami DO have real debuffs behind
@@ -562,7 +640,8 @@ function toggleItCaptions() {
 const DISABLE_SYNC_KEY = 'kefkaDisableSync';
 const SYNC_BTN_IDS = [
   'g1r', 'g1f', 't1i', 't1t', 'i1r', 'i1f',
-  'g2r', 'g2f', 'i2r', 'i2f', 'thr', 'thf', 'blr', 'blf',
+  'g2r', 'g2f', 'i2r', 'i2f',
+  'thr1', 'thf1', 'blr1', 'blf1', 'thr2', 'thf2', 'blr2', 'blf2',
 ];
 let disableSyncButtons = false;
 
@@ -583,10 +662,14 @@ function updateSyncButtonDisabled() {
   document.getElementById('g2f').disabled = disableSyncButtons || g1Order;
   document.getElementById('i2r').disabled = disableSyncButtons || it1Order;
   document.getElementById('i2f').disabled = disableSyncButtons || it1Order;
-  document.getElementById('thr').disabled = disableSyncButtons;
-  document.getElementById('thf').disabled = disableSyncButtons;
-  document.getElementById('blr').disabled = disableSyncButtons;
-  document.getElementById('blf').disabled = disableSyncButtons;
+  document.getElementById('thr1').disabled = disableSyncButtons;
+  document.getElementById('thf1').disabled = disableSyncButtons;
+  document.getElementById('thr2').disabled = disableSyncButtons;
+  document.getElementById('thf2').disabled = disableSyncButtons;
+  document.getElementById('blr1').disabled = disableSyncButtons;
+  document.getElementById('blf1').disabled = disableSyncButtons;
+  document.getElementById('blr2').disabled = disableSyncButtons;
+  document.getElementById('blf2').disabled = disableSyncButtons;
   document.getElementById('enforce-order-cb').disabled = disableSyncButtons;
 }
 

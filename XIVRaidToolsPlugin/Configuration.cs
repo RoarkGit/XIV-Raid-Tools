@@ -9,4 +9,6 @@ public sealed class Configuration : IPluginConfiguration
     public bool ShowTooltips { get; set; } = true;
 
     public bool DisablePartySync { get; set; } = false;
+
+    public bool ResultsOnly { get; set; } = false;
 }

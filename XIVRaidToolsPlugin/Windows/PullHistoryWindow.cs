@@ -70,7 +70,7 @@ public sealed class PullHistoryWindow : Window
             ImGui.PushID(i);
             ImGui.TextColored(Theme.TextDim, snap.Timestamp.ToString("HH:mm:ss"));
             ImGui.PushTextWrapPos(ImGui.GetContentRegionAvail().X + ImGui.GetCursorPosX());
-            ImGui.TextUnformatted(snap.Describe());
+            ImGui.TextUnformatted(snap.Describe(s.TwoCastThunderBlizzard));
             ImGui.PopTextWrapPos();
             if (ImGui.Button("Restore"))
             {

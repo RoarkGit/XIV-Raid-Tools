@@ -19,6 +19,17 @@ same WebSocket relay (`server/index.js`).
   `enforceOrder` button-disabling logic 1:1 from `app.js`.
 - Ports Reset, including clearing personal (unsynced) debuff selections on
   every other connected client when one player hits Reset.
+- "Two-cast Thunder & Blizzard" (off by default): some pulls only cast
+  Thunder/Blizzard once per phase, others twice. Off, a single Real/Fake
+  call each, the original behavior. On, each is cast twice per phase and
+  the real call is whichever way the two casts combine (both the same ->
+  Real, different -> Fake), with 1st/2nd rows to call each cast separately.
+  A synced, room-wide setting (like `enforceOrder`), not a per-client
+  preference, and lives in the Kefka Says window itself rather than
+  `/xrt config` since it's specific to that mechanic.
+- "Results only" mode (`/xrt config`): hides the button/input column
+  entirely, showing just the derived status column - for players who send
+  state via in-game macros instead of clicking buttons themselves.
 - Deliberately does not read any game state (party list, duty, casts). It's
   a synced display, same scope as the webapp, just in an ImGui window.
 
@@ -70,8 +81,11 @@ Workflow permissions, since it commits `pluginmaster.json` back to `main`.
 ## Commands
 
 - `/xrt kefka` (or bare `/xrt`) opens the Kefka Says tracker.
-- `/xrt config` opens plugin settings (currently just a relay server URL
-  override, for a self-hosted relay or a local dev server).
+- `/xrt config` opens plugin settings: show/hide hover tooltips, disable
+  synced buttons (a safety toggle against misclicks changing party state),
+  and "Results only" mode (hide the button column entirely). "Two-cast
+  Thunder & Blizzard" lives in the Kefka Says window itself instead - see
+  "What it does" above.
 
 Session actions (create/join/leave a room) are buttons in the window
 itself, not command-line subcommands. Firing a mechanic call, however, is
@@ -96,14 +110,19 @@ available from the command line too, for a macro or hotkey:
   a Floor AOE's Cast row. The first call of either name claims Floor AOE
   #1 for that shape (Floor AOE #2 is always the other shape); a later call
   naming the other shape targets Floor AOE #2 instead.
-- `/xrt kefka thunder real|fake` / `/xrt kefka blizzard real|fake`: toggles
-  that Cast row directly, no target inference needed.
+- `/xrt kefka thunder real|fake` / `/xrt kefka blizzard real|fake`: with
+  "Two-cast Thunder & Blizzard" off (the default), sets that element's Cast
+  row directly, no target inference needed. With it on, behaves like `gco`
+  instead - targets whichever cast (1st, then 2nd) is not yet called.
+- `/xrt kefka thunder1|thunder2 real|fake` / `/xrt kefka blizzard1|blizzard2
+  real|fake`: same as `gco1`/`gco2` - targets that exact cast directly
+  regardless of the toggle above, for when a macro needs to be explicit.
 - `/xrt kefka reset`: same as clicking Reset.
 
-An unknown tool, an unrecognized subcommand, or a `gco` call with nothing
-left to target (both GCOs already resolved on that axis) prints a visible
-error in the game chat rather than silently doing nothing, and does not
-open the window.
+An unknown tool, an unrecognized subcommand, or a `gco`/`thunder`/`blizzard`
+call with nothing left to target (both instances already resolved) prints a
+visible error in the game chat rather than silently doing nothing, and does
+not open the window.
 
 ## Pull history
 

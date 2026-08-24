@@ -48,10 +48,15 @@ public sealed class Plugin : IDalamudPlugin
                 + "  /xrt kefka\n"
                 + "    gco [real|fake|water|lightning|bomb]\n"
                 + "    gco1|gco2 [real|fake|water|lightning|bomb]\n"
-                + "    <tsunami|inferno|thunder|blizzard> [real|fake]\n"
+                + "    <tsunami|inferno> [real|fake]\n"
+                + "    <thunder|blizzard> [real|fake]\n"
+                + "    <thunder1|thunder2|blizzard1|blizzard2> [real|fake]\n"
                 + "    reset\n"
                 + "  /xrt config\n"
-                + "Bare gco/tsunami/inferno commands assume order of occurrence (first call sets GCO1/Floor AOE #1, second sets GCO2/Floor AOE #2). Use gco1/gco2 to target one explicitly instead.",
+                + "Bare gco/tsunami/inferno commands assume order of occurrence (first call sets slot 1, second sets slot 2); gco1/gco2 target one explicitly instead. "
+                + "Bare thunder/blizzard always target the 1st cast unless \"Two-cast Thunder & Blizzard\" is enabled in the window, in which case they auto-pick 1st then 2nd the same way gco does; "
+                + "thunder1/thunder2/blizzard1/blizzard2 always target that exact cast regardless of the toggle. "
+                + "With the toggle on, each element's real/fake call is whichever way its two casts combine (both the same -> Real, different -> Fake), not either cast's raw value.",
         });
 
         PluginInterface.UiBuilder.Draw += _windowSystem.Draw;
@@ -143,13 +148,27 @@ public sealed class Plugin : IDalamudPlugin
                 break;
 
             case "thunder" when arg1 is "real" or "fake":
-                SetRfIdempotent(ref s.ThunderRf, ParseRf(arg1));
-                _session.PushState();
+                if (!HandleElement(true, 0, arg1)) return;
+                break;
+
+            case "thunder1" when arg1 is "real" or "fake":
+                if (!HandleElement(true, 1, arg1)) return;
+                break;
+
+            case "thunder2" when arg1 is "real" or "fake":
+                if (!HandleElement(true, 2, arg1)) return;
                 break;
 
             case "blizzard" when arg1 is "real" or "fake":
-                SetRfIdempotent(ref s.BlizzardRf, ParseRf(arg1));
-                _session.PushState();
+                if (!HandleElement(false, 0, arg1)) return;
+                break;
+
+            case "blizzard1" when arg1 is "real" or "fake":
+                if (!HandleElement(false, 1, arg1)) return;
+                break;
+
+            case "blizzard2" when arg1 is "real" or "fake":
+                if (!HandleElement(false, 2, arg1)) return;
                 break;
 
             case "reset":
@@ -171,8 +190,8 @@ public sealed class Plugin : IDalamudPlugin
         _kefkaWindow.IsOpen = true;
     }
 
-    private const string HelpText = "Usage: /xrt kefka gco [real|fake|water|lightning|bomb], "
-        + "/xrt kefka <tsunami|inferno|thunder|blizzard> [real|fake], /xrt kefka reset";
+    private const string HelpText = "Usage: /xrt kefka gco[1|2] [real|fake|water|lightning|bomb], "
+        + "/xrt kefka <tsunami|inferno> [real|fake], /xrt kefka <thunder|blizzard>[1|2] [real|fake], /xrt kefka reset";
 
     private static RF ParseRf(string arg) => arg == "real" ? RF.Real : RF.Fake;
 
@@ -309,6 +328,53 @@ public sealed class Plugin : IDalamudPlugin
             case "lightning": if (pos != Pos.Lightning) s.SetPos(gco, Pos.Lightning); break;
             case "bomb": if (!accel) s.ToggleAccel(gco); break;
         }
+        return true;
+    }
+
+    // "thunder"/"blizzard" (cast == 0): in single-cast mode (the default -
+    // see MechState.TwoCastThunderBlizzard) always targets cast 1, same as
+    // before two-cast support existed. In two-cast mode, targets whichever
+    // cast (1st then 2nd) is still unresolved, mirroring HandleGco's
+    // auto-pick convention - each element is cast twice per phase and the
+    // final real/fake call is the XOR of the two (see MechState.CombineRf).
+    // "thunder1"/"thunder2" (and blizzard1/2) bypass that inference to
+    // target a specific cast directly, mirroring gco1/gco2, regardless of
+    // mode. Returns whether the command did anything, same as HandleGco.
+    private bool HandleElement(bool thunder, int cast, string arg)
+    {
+        var s = _session.State;
+        var v = ParseRf(arg);
+        var name = thunder ? "thunder" : "blizzard";
+
+        if (cast == 0)
+        {
+            if (!s.TwoCastThunderBlizzard)
+            {
+                cast = 1;
+            }
+            else
+            {
+                cast = thunder
+                    ? (s.Thunder1Rf == RF.None ? 1 : s.Thunder2Rf == RF.None ? 2 : 0)
+                    : (s.Blizzard1Rf == RF.None ? 1 : s.Blizzard2Rf == RF.None ? 2 : 0);
+                if (cast == 0)
+                {
+                    ReportInvalidCommand($"XIV Raid Tools: both {name} casts are already called, reset first. "
+                        + $"Use {name}1/{name}2 to target a specific one directly instead.");
+                    return false;
+                }
+            }
+        }
+
+        if (thunder)
+        {
+            if (cast == 1) SetRfIdempotent(ref s.Thunder1Rf, v); else SetRfIdempotent(ref s.Thunder2Rf, v);
+        }
+        else
+        {
+            if (cast == 1) SetRfIdempotent(ref s.Blizzard1Rf, v); else SetRfIdempotent(ref s.Blizzard2Rf, v);
+        }
+        _session.PushState();
         return true;
     }
 

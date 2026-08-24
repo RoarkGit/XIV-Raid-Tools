@@ -15,6 +15,30 @@ public sealed class KefkaSaysWindow : Window
     // to make the status column's total height match the input column's.
     private const float StatusCardGap = 7f;
 
+    // Extra gap added on TOP of StatusCardGap, at each of the 3 spaces
+    // between the status column's 4 sections (Position/Accel Bomb pair,
+    // Gaze, Floor AOE, Thunder & Blizzard) - the input column has 5 sections
+    // (GCO#1, Floor AOE#1, GCO#2, Floor AOE#2, Thunder & Blizzard) that add
+    // up taller, and every section on both sides has a fixed, deterministic
+    // height (same content shape every frame, nothing state-dependent), so
+    // the total height difference is itself a constant - not something that
+    // needs measuring at runtime. This spreads that constant gap across the
+    // 3 spaces instead of leaving it as one dead patch of space at the
+    // bottom (Draw()'s own end-of-column padding still covers whatever this
+    // doesn't get exactly right, as a safety net - see Draw()). Tuned
+    // in-game like StatusCardGap; nudge if the columns still don't line up.
+    private const float StatusColumnStretch = 8.3f;
+
+    // Fixed slot width for CastRow's "1st"/"2nd" label - see CastRow's
+    // comment for why this needs to be a shared constant, not each label's
+    // own measured width.
+    private const float CastRowLabelSlot = 22f;
+
+    // Fixed visual-rhythm gap between the status column's Thunder and
+    // Blizzard rows (see DrawStatusColumn) - unrelated to StatusColumnStretch
+    // above (that's between sections; this is between rows within one).
+    private const float ThunderBlizzardRowGap = 8f;
+
     private readonly SessionClient<MechState> _session;
     private readonly GameIcons _gameIcons;
     private readonly Configuration _config;
@@ -120,15 +144,29 @@ public sealed class KefkaSaysWindow : Window
             DrawTopBar();
             ImGui.Separator();
 
+            // Results-only mode (for people who send state via in-game macros
+            // instead of clicking buttons): skip the two-column table
+            // entirely and just draw the status column at full width, same
+            // as DrawStatusColumn's own content sizing (it reads
+            // GetContentRegionAvail().X itself, so it doesn't need to be
+            // inside a table column to lay out correctly).
+            if (_config.ResultsOnly)
+            {
+                DrawStatusColumn();
+                return;
+            }
+
             // Mirrors .main-card's two flex columns: .col-inputs beside
             // .col-status. The webapp's .col-inputs is a fixed 410px because
             // it holds full-width text buttons; ours holds compact icon
             // buttons with no row labels at all now. Sized to fit whichever
-            // is wider: the "Debuffs" row's 3 buttons, or the Thunder/
-            // Blizzard panes side by side (each needs room for its own
-            // "THUNDER"/"BLIZZARD" header plus 2 buttons plus the pane's own
-            // padding) - Thunder & Blizzard turned out to need more room
-            // than 3 plain buttons did once each got its own bordered pane.
+            // is wider: the "Debuffs" row's 3 buttons, or two-cast mode's
+            // Thunder/Blizzard split (each side needs room for its own
+            // "THUNDER"/"BLIZZARD" header plus 2 buttons) - this is a rough
+            // upper-bound estimate (still sized as if each side were a
+            // padded pane, from when this used bordered GroupCard panes; see
+            // DrawThunderBlizzard), not a tight fit, but erring wide is
+            // harmless here.
             var contentW = ImGui.GetContentRegionAvail().X;
             var btnSize = ImGui.GetFrameHeight() + Sc(18f);
             var debuffsRowW = 3 * btnSize + 2 * Sc(ButtonGap) + Sc(12f);
@@ -149,34 +187,40 @@ public sealed class KefkaSaysWindow : Window
                 ImGui.TableNextRow();
 
                 // .main-card align-items:stretch - both columns the same
-                // height, computed with ZERO cross-frame guessing: draw the
-                // status column FIRST (out of visual order, via
-                // TableSetColumnIndex) so its true height is known within
-                // THIS frame, then draw input and pad whichever one is
-                // shorter against the other's now-known height. The previous
-                // approach cached last frame's height to decide this frame's
-                // padding - a one-frame lag that was a plausible source of
-                // the mismatches we kept seeing. This has no lag: both
-                // heights are real numbers from the current frame before any
-                // padding decision is made.
-                ImGui.TableSetColumnIndex(1);
-                var sy0 = ImGui.GetCursorPosY();
-                DrawStatusColumn();
-                var statusH = ImGui.GetCursorPosY() - sy0;
-                // Recorded explicitly rather than trusting TableSetColumnIndex
-                // to restore column 1's cursor to wherever DrawStatusColumn
-                // left it when we jump back below - a persistent few-pixel
-                // mismatch survived several rounds of size tuning, which
-                // pointed at this assumption rather than the sizes themselves.
-                var statusEndPos = ImGui.GetCursorScreenPos();
-
+                // height, computed with ZERO cross-frame guessing: draw both
+                // columns at their own natural height (order doesn't matter,
+                // ImGui table columns can be visited in any order within a
+                // row), then append a plain trailing Dummy to whichever one
+                // came up shorter - simple, can't hide content, can't
+                // overshoot, since it's just blank space with nothing else
+                // touching it. (An earlier version tried to grow the status
+                // column's Thunder & Blizzard card itself to look
+                // intentional rather than leaving a gap - broke in more than
+                // one way and wasn't worth continuing to debug blind without
+                // a way to render this and check.)
                 ImGui.TableSetColumnIndex(0);
                 var iy0 = ImGui.GetCursorPosY();
                 DrawInputsColumn();
                 var inputH = ImGui.GetCursorPosY() - iy0;
+                // Recorded explicitly rather than trusting TableSetColumnIndex
+                // to restore column 0's cursor to wherever DrawInputsColumn
+                // left it when we jump back below - a persistent few-pixel
+                // mismatch survived several rounds of size tuning, which
+                // pointed at this assumption rather than the sizes themselves.
+                var inputEndPos = ImGui.GetCursorScreenPos();
+
+                ImGui.TableSetColumnIndex(1);
+                var sy0 = ImGui.GetCursorPosY();
+                DrawStatusColumn();
+                var statusH = ImGui.GetCursorPosY() - sy0;
+                var statusEndPos = ImGui.GetCursorScreenPos();
 
                 if (inputH < statusH)
+                {
+                    ImGui.TableSetColumnIndex(0);
+                    ImGui.SetCursorScreenPos(inputEndPos);
                     ImGui.Dummy(new Vector2(0, statusH - inputH));
+                }
                 else if (statusH < inputH)
                 {
                     ImGui.TableSetColumnIndex(1);
@@ -296,6 +340,23 @@ public sealed class KefkaSaysWindow : Window
             s.EnforceOrder = enforceOrder;
             _session.PushState();
         }
+
+        // A standing room-wide mechanic setting (see
+        // MechState.TwoCastThunderBlizzard), same as Enforce order right
+        // beside it - not a per-client display preference, so it belongs
+        // here rather than in the plugin-wide ConfigWindow (Settings), and
+        // gated by the same DisablePartySync guard as Enforce order since
+        // it's a synced field too.
+        ImGui.SameLine();
+        var twoCast = s.TwoCastThunderBlizzard;
+        if (ImGui.Checkbox("Two-cast Thunder & Blizzard", ref twoCast))
+        {
+            s.TwoCastThunderBlizzard = twoCast;
+            _session.PushState();
+        }
+        if (TooltipsEnabled())
+            ImGui.SetTooltip("On: Thunder and Blizzard are each cast twice per phase - call " +
+                "the real result from how the two casts combine. Off (default): a single Real/Fake call each.");
         ImGui.EndDisabled();
 
         // .btn-reset sits top-right of .page-header in the webapp; right-align
@@ -436,18 +497,25 @@ public sealed class KefkaSaysWindow : Window
         }
     }
 
-    // Two small bordered panes side by side (reusing the status column's
-    // GroupCard for the box/header - nothing about it is status-column
-    // specific) instead of one "Thunder & Blizzard" section with "Thunder"/
-    // "Blizzard" row labels: each pane's own header already says which
-    // element it is, so a per-row label would just repeat it. Needs an
-    // actual nested table (not just SameLine) so GroupCard's and CastRow's
-    // internal GetContentRegionAvail() calls see the half-width column
-    // instead of the whole row.
+    // Thunder and Blizzard sit side by side either way (single-cast, the
+    // default, and two-cast both use the same layout, just with a different
+    // row count - see MechState.TwoCastThunderBlizzard) rather than
+    // switching between a combined section and a split one: same reasoning
+    // as CastRow's own no-row-label default, applied one level up - a
+    // consistent shape between the two modes reads better than the layout
+    // itself changing. No bordered box - GCO and Floor AOE above never get
+    // one either (an earlier version reused the status column's GroupCard
+    // for a bordered pane here, matching the Dalamud plugin's OWN look to
+    // the webapp's old boxed style, but that made this section the only
+    // boxed thing in the whole input column). BordersInnerV draws the thin
+    // divider between the two sides for free (same flag Draw()'s own
+    // input/status column split already uses).
     private void DrawThunderBlizzard()
     {
         var s = _session.State;
-        if (ImGui.BeginTable("thunderblizzard", 2))
+        var twoCast = s.TwoCastThunderBlizzard;
+
+        if (ImGui.BeginTable("thunderblizzard", 2, ImGuiTableFlags.BordersInnerV))
         {
             ImGui.TableSetupColumn("thr", ImGuiTableColumnFlags.WidthStretch);
             ImGui.TableSetupColumn("blz", ImGuiTableColumnFlags.WidthStretch);
@@ -457,24 +525,58 @@ public sealed class KefkaSaysWindow : Window
             // Fake is always tagged red - matches app.js's
             // btnCls('thr',...,'thunder') vs btnCls('thf',...,'fake') asymmetry.
             ImGui.TableNextColumn();
-            GroupCard("Thunder", () => CastRow("thunder", s.ThunderRf, AccentTag.Thunder, _config.DisablePartySync, null,
-                v =>
-                {
-                    // Same click-race guard as SetRf - see MechState.WasJustSetRemotely.
-                    if (s.ThunderRf == v && s.WasJustSetRemotely("thunderRF")) return;
-                    s.ThunderRf = s.ThunderRf == v ? RF.None : v;
-                    _session.PushState();
-                }));
+            DrawElementCell("tbthunder", "Thunder", twoCast, s.Thunder1Rf, s.Thunder2Rf, AccentTag.Thunder,
+                v => SetElementRf(true, 1, v), v => SetElementRf(true, 2, v));
 
             ImGui.TableNextColumn();
-            GroupCard("Blizzard", () => CastRow("blizzard", s.BlizzardRf, AccentTag.Blizzard, _config.DisablePartySync, null,
-                v =>
-                {
-                    if (s.BlizzardRf == v && s.WasJustSetRemotely("blizzardRF")) return;
-                    s.BlizzardRf = s.BlizzardRf == v ? RF.None : v;
-                    _session.PushState();
-                }));
+            DrawElementCell("tbblizzard", "Blizzard", twoCast, s.Blizzard1Rf, s.Blizzard2Rf, AccentTag.Blizzard,
+                v => SetElementRf(false, 1, v), v => SetElementRf(false, 2, v));
 
+            ImGui.EndTable();
+        }
+
+        // Same click-race guard as SetRf - see MechState.WasJustSetRemotely.
+        void SetElementRf(bool thunder, int cast, RF v)
+        {
+            var field = thunder ? (cast == 1 ? "thunder1RF" : "thunder2RF") : (cast == 1 ? "blizzard1RF" : "blizzard2RF");
+            var cur = thunder ? (cast == 1 ? s.Thunder1Rf : s.Thunder2Rf) : (cast == 1 ? s.Blizzard1Rf : s.Blizzard2Rf);
+            if (cur == v && s.WasJustSetRemotely(field)) return;
+            var next = cur == v ? RF.None : v;
+            if (thunder) { if (cast == 1) s.Thunder1Rf = next; else s.Thunder2Rf = next; }
+            else { if (cast == 1) s.Blizzard1Rf = next; else s.Blizzard2Rf = next; }
+            _session.PushState();
+        }
+    }
+
+    // One side (Thunder or Blizzard) of DrawThunderBlizzard's split. Wrapped
+    // in its own nested single-column table - same width-constraint
+    // technique GroupCard uses internally, just without painting a
+    // background/border - rather than drawing straight into the outer
+    // table's cell: without this nested table, the second column's CastRows
+    // (which position themselves via manual SetCursorScreenPos calls - see
+    // CastRow) rendered visibly lower than the first column's despite
+    // identical draw calls, some cross-column cursor-tracking interaction in
+    // the outer 2-column table. The earlier bordered-pane version never hit
+    // this because GroupCard already wrapped each side in exactly this kind
+    // of nested table for its own reasons.
+    private void DrawElementCell(string id, string label, bool twoCast, RF cast1, RF cast2, AccentTag tag, Action<RF> setCast1, Action<RF> setCast2)
+    {
+        var width = ImGui.GetContentRegionAvail().X;
+        if (ImGui.BeginTable(id, 1))
+        {
+            ImGui.TableSetupColumn("c", ImGuiTableColumnFlags.WidthFixed, width);
+            ImGui.TableNextRow();
+            ImGui.TableNextColumn();
+            SectionLabel(label);
+            if (twoCast)
+            {
+                CastRow($"{id}1", cast1, tag, _config.DisablePartySync, null, setCast1, "1st");
+                CastRow($"{id}2", cast2, tag, _config.DisablePartySync, null, setCast2, "2nd");
+            }
+            else
+            {
+                CastRow($"{id}1", cast1, tag, _config.DisablePartySync, null, setCast1);
+            }
             ImGui.EndTable();
         }
     }
@@ -578,17 +680,53 @@ public sealed class KefkaSaysWindow : Window
         return clicked;
     }
 
-    // Real/Fake as check/X icon buttons, no row label at all - GCO and Floor
-    // AOE's section header ("Grand Cross Omega #1"/"Floor AOE #1") and
+    // Real/Fake as check/X icon buttons, no row label by default - GCO and
+    // Floor AOE's section header ("Grand Cross Omega #1"/"Floor AOE #1") and
     // Thunder/Blizzard's own pane header (see DrawThunderBlizzard) already
     // give enough context that a "Cast" label added nothing but width
-    // pressure. Same click-to-clear semantics as app.js's set(): onSet
-    // receives the raw clicked target (Real or Fake) and decides the
-    // toggle-off itself, matching SetIt1Rf/SetIt2Rf/SetRf's convention.
-    private void CastRow(string id, RF current, AccentTag realTag, bool disabled, string? tooltip, Action<RF> onSet)
+    // pressure. rowLabel is the one opt-in exception: Thunder/Blizzard's
+    // panes hold two of these rows now (1st/2nd cast), which do need
+    // something to tell them apart. Same click-to-clear semantics as
+    // app.js's set(): onSet receives the raw clicked target (Real or Fake)
+    // and decides the toggle-off itself, matching
+    // SetIt1Rf/SetIt2Rf/SetRf's convention.
+    private void CastRow(string id, RF current, AccentTag realTag, bool disabled, string? tooltip, Action<RF> onSet, string? rowLabel = null, float labelSlot = CastRowLabelSlot)
     {
         var height = ImGui.GetFrameHeight();
         var gap = Sc(ButtonGap);
+
+        // AlignTextToFramePadding doesn't reliably center text against a
+        // Button drawn with an explicit custom size (it assumes the
+        // upcoming frame widget sizes itself off style.FramePadding the
+        // normal way, which IconAccentButton's fixed width/height bypasses)
+        // - same reason TbRow/GroupCard elsewhere in this file compute
+        // vertical centering by hand from GetCursorScreenPos rather than
+        // leaning on ImGui's own alignment helpers. And the slot itself is a
+        // FIXED width (Sc(labelSlot)), not each call's own measured
+        // CalcTextSize - "1st" and "2nd" (or "Thunder" and "Blizzard") don't
+        // measure to quite the same pixel width (letterforms differ), so
+        // sizing the slot per-label put same-pane/same-column rows' buttons
+        // a pixel or two out of line with each other. A shared constant slot
+        // guarantees identical button-start-X across rows, same reasoning as
+        // TbRow's fixed nameSlot. labelSlot defaults to the short "1st"/"2nd"
+        // width; callers with longer labels (e.g. "Thunder"/"Blizzard" - see
+        // DrawThunderBlizzard) pass a wider one.
+        var labelW = 0f;
+        if (rowLabel is not null)
+        {
+            var rowStart = ImGui.GetCursorScreenPos();
+            // labelH from the BASE line height times the ratio, not from
+            // GetTextLineHeight() queried after SetWindowFontScale - this
+            // binding's GetTextLineHeight() doesn't reflect the window font
+            // scale, only actual glyph measurement (CalcTextSize) does. Same
+            // reason TbRow computes nameH/valueH that way instead.
+            var labelH = ImGui.GetTextLineHeight() * LabelScale;
+            ImGui.SetCursorScreenPos(new Vector2(rowStart.X, rowStart.Y + (height - labelH) / 2f));
+            ScaledText(rowLabel, LabelScale, Theme.TextDim);
+            labelW = Sc(labelSlot);
+            ImGui.SetCursorScreenPos(new Vector2(rowStart.X + labelW, rowStart.Y));
+        }
+
         var width = RowButtonWidth(2, gap);
 
         ImGui.BeginGroup();
@@ -669,12 +807,23 @@ public sealed class KefkaSaysWindow : Window
 
     // Right column: the "My Status" label + top pair as one block, then the
     // three group cards. Drawn at natural height; see DrawInputsColumn.
+    // Matching the input column's height is Draw()'s job (a plain trailing
+    // Dummy on whichever column comes up shorter) - this just draws its own
+    // natural content and doesn't need to know or care what the input
+    // column's height is.
     private void DrawStatusColumn()
     {
         var s = _session.State;
 
+        // No ImGui.Spacing() here after the header, unlike GroupCard's own
+        // internal SectionLabel+Spacing (used for every bordered card below)
+        // - this top-level header matches DrawGrandCross/DrawFloorAoeSection
+        // on the input side, which go straight from their SectionLabel into
+        // their first row with no extra gap. The mismatched extra Spacing()
+        // that used to be here added a few fixed pixels found nowhere on the
+        // input side, offsetting every status card below it slightly lower
+        // than its input-column counterpart for the whole rest of the column.
         SectionLabel("My Status");
-        ImGui.Spacing();
 
         // .scards-top is a grid-template-columns: 1fr 1fr - both cards get an
         // equal fixed-width cell. Drawing them as actual bordered .scard
@@ -705,7 +854,16 @@ public sealed class KefkaSaysWindow : Window
         Icon accelIcon = accel is not null ? (_gameIcons.AccelBomb ?? Icons.Bomb) : Icons.Still;
         Card(cardWidth, "Accel Bomb", accelIcon, accel is not null,
             accel == "move" ? AccentTag.Move : AccentTag.Still, accel == "still" ? "STOP" : "MOVE");
-        SetExactGap(StatusCardGap);
+
+        // StatusColumnStretch was tuned against two-cast mode's taller input
+        // column (see its own comment) - single-cast mode's input column is
+        // back to its original (shorter) height, so applying the same
+        // stretch there would overshoot. Only add it in the mode it was
+        // tuned for; the safety net in Draw() still guarantees the overall
+        // heights match exactly either way, this only affects how the extra
+        // space (if any) is distributed.
+        var extraStretch = s.TwoCastThunderBlizzard ? StatusColumnStretch : 0f;
+        SetExactGap(StatusCardGap + extraStretch);
 
         GroupCard("Gaze", () =>
         {
@@ -718,7 +876,7 @@ public sealed class KefkaSaysWindow : Window
         // item, including Dummy) - a plain extra Dummy(StatusCardGap) here
         // would stack ON TOP of that. SetExactGap cancels the automatic
         // spacing out first, so StatusCardGap is the WHOLE gap between boxes.
-        SetExactGap(StatusCardGap);
+        SetExactGap(StatusCardGap + extraStretch);
 
         GroupCard("Floor AOE", () =>
         {
@@ -728,12 +886,17 @@ public sealed class KefkaSaysWindow : Window
             FloorRow("Tsunami", FloorType.Tsunami, tsunamiRf, AccentTag.Tsunami);
         });
 
-        SetExactGap(StatusCardGap);
+        SetExactGap(StatusCardGap + extraStretch);
 
         GroupCard("Thunder & Blizzard", () =>
         {
-            ElementRow("Thunder", s.ThunderRf, Icons.Thunder, Icons.ThunderFake, AccentTag.Thunder);
-            ElementRow("Blizzard", s.BlizzardRf, Icons.Blizzard, Icons.BlizzardFake, AccentTag.Blizzard);
+            ElementRow("Thunder", s.Thunder1Rf, s.Thunder2Rf, Icons.Thunder, Icons.ThunderFake, AccentTag.Thunder, s.TwoCastThunderBlizzard);
+            // Original (single-cast) layout had no explicit gap here, just
+            // ImGui's automatic ItemSpacing between the two ElementRow
+            // calls - only add the extra rhythm gap in two-cast mode, where
+            // each row also grew a sub-line.
+            if (s.TwoCastThunderBlizzard) ImGui.Dummy(new Vector2(0, Sc(ThunderBlizzardRowGap)));
+            ElementRow("Blizzard", s.Blizzard1Rf, s.Blizzard2Rf, Icons.Blizzard, Icons.BlizzardFake, AccentTag.Blizzard, s.TwoCastThunderBlizzard);
         });
     }
 
@@ -753,10 +916,28 @@ public sealed class KefkaSaysWindow : Window
 
     // real/fake icons differ (thunderFake/blizzardFake add the dim + red
     // strike-through per icons.js) - passing one Icon for both states, as an
-    // earlier pass here did, silently dropped that distinction.
-    private void ElementRow(string n, RF rf, Icon real, Icon fake, AccentTag tag) => TbRow(n,
-        rf == RF.Fake ? fake : real, rf != RF.None, tag,
-        rf == RF.Real ? "REAL" : rf == RF.Fake ? "FAKE" : "");
+    // earlier pass here did, silently dropped that distinction. In two-cast
+    // mode (see MechState.TwoCastThunderBlizzard), shows the combined call
+    // as the headline value with the two raw casts it came from as a sub-
+    // line - lets players double check the call, and reserveSub's fixed
+    // extra height also grows this card to better match the input column's
+    // taller Thunder/Blizzard panes in that mode (two cast rows instead of
+    // one). In single-cast mode (the default), cast1 IS the call and there's
+    // no second cast to show a breakdown of, so no sub-line/reserved space.
+    private void ElementRow(string n, RF cast1, RF cast2, Icon real, Icon fake, AccentTag tag, bool twoCast)
+    {
+        var rf = MechState.FinalRf(twoCast, cast1, cast2);
+        // Blank (not "Fake & --") until at least one cast is in, same as
+        // FloorRow's hint staying blank pre-Type/Real-Fake - most of a pull's
+        // lifetime is spent at rest, so a placeholder-only sub line would
+        // mostly just be noise.
+        var sub = !twoCast || (cast1 == RF.None && cast2 == RF.None) ? null : $"{RfWord(cast1)} & {RfWord(cast2)}";
+        TbRow(n, rf == RF.Fake ? fake : real, rf != RF.None, tag,
+            rf == RF.Real ? "REAL" : rf == RF.Fake ? "FAKE" : "",
+            sub, reserveSub: twoCast);
+    }
+
+    private static string RfWord(RF v) => v switch { RF.Real => "Real", RF.Fake => "Fake", _ => "--" };
 
     // A bordered .scard box (bg #0f0f24 + border, rounded) drawn around a
     // section label and its rows. Height is unknown until the rows are laid

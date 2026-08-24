@@ -172,6 +172,14 @@ body.icon-mode.it-captions .btn[data-icon="game-debuff"] .btn-footer {
   color: var(--text-label);
   margin-bottom: 10px;
 }
+/* .col-status's "My Status" label is a direct flex child of .col-status
+   (gap: 10px - see below), unlike .col-inputs's per-section labels, which
+   sit inside .input-section (gap: 8px). Both containers' gap stacks with
+   this label's own margin-bottom, so left column with the smaller gap
+   worked out to 18px above its first button row while status came out to
+   20px above its first card - the two columns' top rows started 2px apart.
+   Overriding just this margin to 8px makes both totals 18px. */
+.col-status > .section-label { margin-bottom: 8px; }
 .session-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .section-label-row { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
 .section-label-row .section-label { margin-bottom: 0; }
@@ -290,6 +298,24 @@ body.icon-mode.it-captions .btn[data-icon="game-debuff"] .btn-footer {
 
 .input-row { display: flex; align-items: center; gap: 8px; width: 100%; }
 .row-label { font-size: 13px; color: var(--text-dim); width: 68px; flex-shrink: 0; }
+
+/* Thunder & Blizzard (see MechState.TwoCastThunderBlizzard in the Dalamud
+   plugin / S.twoCastThunderBlizzard here): a Thunder half and a Blizzard
+   half side by side either way (single-cast, the default, and two-cast both
+   use the same layout, just a different row count per half - a consistent
+   shape between the two modes reads better than the layout itself
+   changing), not a bordered box (an earlier version gave this its own box
+   style matching the Dalamud plugin's GroupCard panes, but nothing else in
+   .col-inputs ever gets one - Grand Cross Omega and Floor AOE are flat rows
+   separated only by input-section's own border-top, so the boxed look was
+   inconsistent with the rest of this column). layoutThunderBlizzard() in
+   app.js just shows/hides each half's 2nd row and 1st-row label (nothing to
+   reparent - both halves always exist in the same place). */
+.tb-side-by-side { flex-direction: row; gap: 0; }
+.tb-half { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+.tb-half .row-label { width: 32px; }
+.tb-half + .tb-half { border-left: 1px solid var(--border); padding-left: 10px; }
+.tb-side-by-side .tb-half:first-child { padding-right: 10px; }
 
 /* All buttons in input rows expand to fill equally within their group.
    Fixed height + flex-centered content (used for both plain text and, in
@@ -450,6 +476,10 @@ body.icon-mode.it-captions .btn[data-icon="game-debuff"] .btn-footer {
       <input type="checkbox" id="enforce-order-cb" onchange="toggleEnforceOrder()">
       Enforce mechanic order (require #1 before #2 can be set)
     </label>
+    <label class="option-row option-check">
+      <input type="checkbox" id="two-cast-tb-cb" onchange="toggleTwoCastThunderBlizzard()">
+      Two-cast Thunder &amp; Blizzard (off: a single Real/Fake call each; on: each is cast twice per phase, call the real result from how the two casts combine)
+    </label>
     <div class="option-row">
       <label class="option-check">
         <input type="checkbox" id="icon-mode-cb" onchange="toggleIconMode()">
@@ -547,21 +577,48 @@ body.icon-mode.it-captions .btn[data-icon="game-debuff"] .btn-footer {
       </div>
     </div>
 
-    <!-- Thunder & Blizzard -->
-    <div class="input-section">
-      <div class="section-label">Thunder & Blizzard</div>
-      <div class="input-row">
-        <div class="row-label">Thunder</div>
-        <div class="btn-group">
-          <button class="btn" id="thr" onclick="set('thunderRF','real')">Real</button>
-          <button class="btn" id="thf" onclick="set('thunderRF','fake')">Fake</button>
+    <!-- Thunder & Blizzard - Thunder half and Blizzard half side by side
+         either way. Single Real/Fake call each by default (1st row only,
+         no row label - the half's own "Thunder"/"Blizzard" header already
+         says what it's for); in two-cast mode, each is cast twice per phase
+         and the raid's real call is the XOR of the two casts (see app.js's
+         combineRf), showing the 2nd row too with "1st"/"2nd" row labels to
+         tell the two apart. layoutThunderBlizzard() in app.js just
+         show/hides the 2nd row and the 1st row's label - both halves always
+         exist in this same place, nothing to reparent. -->
+    <div class="input-section tb-side-by-side">
+      <div class="tb-half">
+        <div class="section-label">Thunder</div>
+        <div class="input-row">
+          <div class="row-label" id="tb-label-thunder1" style="display:none"></div>
+          <div class="btn-group">
+            <button class="btn" id="thr1" onclick="set('thunder1RF','real')">Real</button>
+            <button class="btn" id="thf1" onclick="set('thunder1RF','fake')">Fake</button>
+          </div>
+        </div>
+        <div id="tb-row-thunder2" class="input-row" style="display:none">
+          <div class="row-label">2nd</div>
+          <div class="btn-group">
+            <button class="btn" id="thr2" onclick="set('thunder2RF','real')">Real</button>
+            <button class="btn" id="thf2" onclick="set('thunder2RF','fake')">Fake</button>
+          </div>
         </div>
       </div>
-      <div class="input-row">
-        <div class="row-label">Blizzard</div>
-        <div class="btn-group">
-          <button class="btn" id="blr" onclick="set('blizzardRF','real')">Real</button>
-          <button class="btn" id="blf" onclick="set('blizzardRF','fake')">Fake</button>
+      <div class="tb-half">
+        <div class="section-label">Blizzard</div>
+        <div class="input-row">
+          <div class="row-label" id="tb-label-blizzard1" style="display:none"></div>
+          <div class="btn-group">
+            <button class="btn" id="blr1" onclick="set('blizzard1RF','real')">Real</button>
+            <button class="btn" id="blf1" onclick="set('blizzard1RF','fake')">Fake</button>
+          </div>
+        </div>
+        <div id="tb-row-blizzard2" class="input-row" style="display:none">
+          <div class="row-label">2nd</div>
+          <div class="btn-group">
+            <button class="btn" id="blr2" onclick="set('blizzard2RF','real')">Real</button>
+            <button class="btn" id="blf2" onclick="set('blizzard2RF','fake')">Fake</button>
+          </div>
         </div>
       </div>
     </div>
@@ -632,12 +689,18 @@ body.icon-mode.it-captions .btn[data-icon="game-debuff"] .btn-footer {
         <div class="tb-row">
           <span class="tb-n" id="tn-thr">Thunder</span>
           <div class="tb-icon dim" id="si-thr"></div>
-          <span class="tb-val c-dim" id="sv-thr"></span>
+          <div class="tb-valcol">
+            <span class="tb-val c-dim" id="sv-thr"></span>
+            <span class="tb-sub" id="ss-thr"></span>
+          </div>
         </div>
         <div class="tb-row">
           <span class="tb-n" id="tn-blz">Blizzard</span>
           <div class="tb-icon dim" id="si-blz"></div>
-          <span class="tb-val c-dim" id="sv-blz"></span>
+          <div class="tb-valcol">
+            <span class="tb-val c-dim" id="sv-blz"></span>
+            <span class="tb-sub" id="ss-blz"></span>
+          </div>
         </div>
       </div>
     </div>

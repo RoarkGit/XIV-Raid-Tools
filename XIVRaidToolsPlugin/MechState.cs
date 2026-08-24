@@ -21,12 +21,16 @@ public sealed record PullSnapshot(
     RF G1Rf, Pos G1Pos, bool G1Accel,
     RF G2Rf, Pos G2Pos, bool G2Accel,
     FloorType It1Type, RF It1Rf, RF It2Rf,
-    RF ThunderRf, RF BlizzardRf)
+    RF Thunder1Rf, RF Thunder2Rf, RF Blizzard1Rf, RF Blizzard2Rf)
 {
     // One-line summary for the pull history popup - only mentions fields
     // that were actually set, so an early-pull-wipe snapshot (say, only GCO1
-    // called before a reset) doesn't read as a wall of "None"s.
-    public string Describe()
+    // called before a reset) doesn't read as a wall of "None"s. twoCast is
+    // the CURRENT (live, at display time) TwoCastThunderBlizzard setting,
+    // not something captured per-snapshot - it's a standing preference (see
+    // MechState.TwoCastThunderBlizzard's comment), so the caller just passes
+    // whatever it's set to now.
+    public string Describe(bool twoCast)
     {
         var parts = new List<string>();
 
@@ -44,8 +48,10 @@ public sealed record PullSnapshot(
         AddGco(2, G2Rf, G2Pos, G2Accel);
         if (It1Type != FloorType.None || It1Rf != RF.None)
             parts.Add($"Floor: {It1Type} {It1Rf}".TrimEnd());
-        if (ThunderRf != RF.None) parts.Add($"Thunder: {ThunderRf}");
-        if (BlizzardRf != RF.None) parts.Add($"Blizzard: {BlizzardRf}");
+        var thunderRf = MechState.FinalRf(twoCast, Thunder1Rf, Thunder2Rf);
+        if (thunderRf != RF.None) parts.Add($"Thunder: {thunderRf}");
+        var blizzardRf = MechState.FinalRf(twoCast, Blizzard1Rf, Blizzard2Rf);
+        if (blizzardRf != RF.None) parts.Add($"Blizzard: {blizzardRf}");
 
         return parts.Count > 0 ? string.Join(" | ", parts) : "(empty)";
     }
@@ -61,7 +67,31 @@ public sealed class MechState : ISyncedState
     public List<PullSnapshot> PullHistory { get; } = new();
 
     public void ClearHistory() => PullHistory.Clear();
-    public RF G1Rf, G2Rf, It1Rf, It2Rf, ThunderRf, BlizzardRf;
+    public RF G1Rf, G2Rf, It1Rf, It2Rf;
+
+    // Some fights only cast Thunder/Blizzard once per phase, others twice
+    // (see TwoCastThunderBlizzard) - the raw casts are always tracked in
+    // Thunder1Rf/Blizzard1Rf (the only ones used in single-cast mode) plus
+    // Thunder2Rf/Blizzard2Rf for the second cast when two-cast mode is on.
+    // A standing room-wide preference like EnforceOrder, not per-pull state -
+    // synced (see Serialize/ApplyRemote) so everyone in the room reads the
+    // same final call off the same casts, defaulting off (single-cast, the
+    // original behavior) since that's the more common case.
+    public bool TwoCastThunderBlizzard;
+    public RF Thunder1Rf, Thunder2Rf, Blizzard1Rf, Blizzard2Rf;
+    public RF ThunderRf => FinalRf(TwoCastThunderBlizzard, Thunder1Rf, Thunder2Rf);
+    public RF BlizzardRf => FinalRf(TwoCastThunderBlizzard, Blizzard1Rf, Blizzard2Rf);
+
+    // Single-cast mode: the 1st cast IS the call, same as before two-cast
+    // support existed. Two-cast mode: the call is the XOR of the two casts -
+    // see CombineRf.
+    public static RF FinalRf(bool twoCast, RF cast1, RF cast2) => twoCast ? CombineRf(cast1, cast2) : cast1;
+
+    // None until both casts are in (an incomplete pair has no final call
+    // yet); Real if the two casts match, Fake if they differ.
+    public static RF CombineRf(RF a, RF b) =>
+        a == RF.None || b == RF.None ? RF.None : (a == RF.Real) == (b == RF.Real) ? RF.Real : RF.Fake;
+
     public Pos G1Pos, G2Pos;
     public bool G1Accel, G2Accel;
     public FloorType It1Type;
@@ -150,16 +180,19 @@ public sealed class MechState : ISyncedState
     }
 
     // Whether every mechanic-wide and personal field is at its default.
-    // EnforceOrder deliberately excluded, it's a standing preference, not
-    // per-pull state. Used to skip saving a PullHistory entry for a reset
-    // that had nothing to lose (e.g. a second accidental click on Reset).
+    // EnforceOrder/TwoCastThunderBlizzard deliberately excluded, they're
+    // standing preferences, not per-pull state. Used to skip saving a
+    // PullHistory entry for a reset that had nothing to lose (e.g. a second
+    // accidental click on Reset).
     public bool IsEmpty =>
         G1Rf == RF.None && G2Rf == RF.None && It1Rf == RF.None && It2Rf == RF.None &&
-        ThunderRf == RF.None && BlizzardRf == RF.None && It1Type == FloorType.None &&
+        Thunder1Rf == RF.None && Thunder2Rf == RF.None && Blizzard1Rf == RF.None && Blizzard2Rf == RF.None &&
+        It1Type == FloorType.None &&
         G1Pos == Pos.None && G2Pos == Pos.None && !G1Accel && !G2Accel;
 
-    // reset() - clears everything except enforceOrder; accel fields go back
-    // to false, everything else back to None. Snapshots the pre-reset state
+    // reset() - clears everything except enforceOrder/TwoCastThunderBlizzard
+    // (standing preferences); accel fields go back to false, everything else
+    // back to None. Snapshots the pre-reset state
     // into PullHistory first so it can be restored later (see PullSnapshot).
     // Returns that snapshot (or null if there was nothing to save) so the
     // caller can also push it to the rest of the room via SerializeSnapshot
@@ -173,11 +206,12 @@ public sealed class MechState : ISyncedState
         {
             snapshot = new PullSnapshot(
                 DateTime.Now, G1Rf, G1Pos, G1Accel, G2Rf, G2Pos, G2Accel,
-                It1Type, It1Rf, It2Rf, ThunderRf, BlizzardRf);
+                It1Type, It1Rf, It2Rf, Thunder1Rf, Thunder2Rf, Blizzard1Rf, Blizzard2Rf);
             AddRemoteHistorySnapshot(snapshot);
         }
 
-        G1Rf = G2Rf = It1Rf = It2Rf = ThunderRf = BlizzardRf = RF.None;
+        G1Rf = G2Rf = It1Rf = It2Rf = RF.None;
+        Thunder1Rf = Thunder2Rf = Blizzard1Rf = Blizzard2Rf = RF.None;
         ClearLocalDebuffs();
         It1Type = FloorType.None;
         return snapshot;
@@ -202,7 +236,8 @@ public sealed class MechState : ISyncedState
         G1Rf = snap.G1Rf; G1Pos = snap.G1Pos; G1Accel = snap.G1Accel;
         G2Rf = snap.G2Rf; G2Pos = snap.G2Pos; G2Accel = snap.G2Accel;
         It1Type = snap.It1Type; It1Rf = snap.It1Rf; It2Rf = snap.It2Rf;
-        ThunderRf = snap.ThunderRf; BlizzardRf = snap.BlizzardRf;
+        Thunder1Rf = snap.Thunder1Rf; Thunder2Rf = snap.Thunder2Rf;
+        Blizzard1Rf = snap.Blizzard1Rf; Blizzard2Rf = snap.Blizzard2Rf;
     }
 
     // G1Pos/G2Pos/G1Accel/G2Accel are deliberately NOT part of Serialize's
@@ -232,9 +267,12 @@ public sealed class MechState : ISyncedState
         ["it1type"] = TypeToStr(It1Type),
         ["it1rf"] = RfToStr(It1Rf),
         ["it2rf"] = RfToStr(It2Rf),
-        ["thunderRF"] = RfToStr(ThunderRf),
-        ["blizzardRF"] = RfToStr(BlizzardRf),
+        ["thunder1RF"] = RfToStr(Thunder1Rf),
+        ["thunder2RF"] = RfToStr(Thunder2Rf),
+        ["blizzard1RF"] = RfToStr(Blizzard1Rf),
+        ["blizzard2RF"] = RfToStr(Blizzard2Rf),
         ["enforceOrder"] = EnforceOrder,
+        ["twoCastThunderBlizzard"] = TwoCastThunderBlizzard,
     };
 
     // When a field was last set by an INCOMING remote update (see
@@ -264,9 +302,12 @@ public sealed class MechState : ISyncedState
         if (state.ContainsKey("it1type")) { It1Type = StrToType(state["it1type"]?.GetValue<string>()); _remoteSetAt["it1type"] = now; }
         if (state.ContainsKey("it1rf")) { It1Rf = StrToRf(state["it1rf"]?.GetValue<string>()); _remoteSetAt["it1rf"] = now; }
         if (state.ContainsKey("it2rf")) { It2Rf = StrToRf(state["it2rf"]?.GetValue<string>()); _remoteSetAt["it2rf"] = now; }
-        if (state.ContainsKey("thunderRF")) { ThunderRf = StrToRf(state["thunderRF"]?.GetValue<string>()); _remoteSetAt["thunderRF"] = now; }
-        if (state.ContainsKey("blizzardRF")) { BlizzardRf = StrToRf(state["blizzardRF"]?.GetValue<string>()); _remoteSetAt["blizzardRF"] = now; }
+        if (state.ContainsKey("thunder1RF")) { Thunder1Rf = StrToRf(state["thunder1RF"]?.GetValue<string>()); _remoteSetAt["thunder1RF"] = now; }
+        if (state.ContainsKey("thunder2RF")) { Thunder2Rf = StrToRf(state["thunder2RF"]?.GetValue<string>()); _remoteSetAt["thunder2RF"] = now; }
+        if (state.ContainsKey("blizzard1RF")) { Blizzard1Rf = StrToRf(state["blizzard1RF"]?.GetValue<string>()); _remoteSetAt["blizzard1RF"] = now; }
+        if (state.ContainsKey("blizzard2RF")) { Blizzard2Rf = StrToRf(state["blizzard2RF"]?.GetValue<string>()); _remoteSetAt["blizzard2RF"] = now; }
         if (state.ContainsKey("enforceOrder")) EnforceOrder = state["enforceOrder"]?.GetValue<bool>() ?? false;
+        if (state.ContainsKey("twoCastThunderBlizzard")) TwoCastThunderBlizzard = state["twoCastThunderBlizzard"]?.GetValue<bool>() ?? false;
 
         // See ClearLocalDebuffs's comment - clears THIS client's own
         // local-only debuff fields in response to another client's Reset,
@@ -297,8 +338,10 @@ public sealed class MechState : ISyncedState
         ["g2pos"] = PosToStr(snap.G2Pos),
         ["g2accel"] = snap.G2Accel,
         ["it2rf"] = RfToStr(snap.It2Rf),
-        ["thunderRF"] = RfToStr(snap.ThunderRf),
-        ["blizzardRF"] = RfToStr(snap.BlizzardRf),
+        ["thunder1RF"] = RfToStr(snap.Thunder1Rf),
+        ["thunder2RF"] = RfToStr(snap.Thunder2Rf),
+        ["blizzard1RF"] = RfToStr(snap.Blizzard1Rf),
+        ["blizzard2RF"] = RfToStr(snap.Blizzard2Rf),
     };
 
     private static PullSnapshot DeserializeSnapshot(JsonObject snap) => new(
@@ -306,7 +349,8 @@ public sealed class MechState : ISyncedState
         G1Rf: StrToRf(snap["g1rf"]?.GetValue<string>()), G1Pos: StrToPos(snap["g1pos"]?.GetValue<string>()), G1Accel: snap["g1accel"]?.GetValue<bool>() ?? false,
         G2Rf: StrToRf(snap["g2rf"]?.GetValue<string>()), G2Pos: StrToPos(snap["g2pos"]?.GetValue<string>()), G2Accel: snap["g2accel"]?.GetValue<bool>() ?? false,
         It1Type: StrToType(snap["it1type"]?.GetValue<string>()), It1Rf: StrToRf(snap["it1rf"]?.GetValue<string>()), It2Rf: StrToRf(snap["it2rf"]?.GetValue<string>()),
-        ThunderRf: StrToRf(snap["thunderRF"]?.GetValue<string>()), BlizzardRf: StrToRf(snap["blizzardRF"]?.GetValue<string>()));
+        Thunder1Rf: StrToRf(snap["thunder1RF"]?.GetValue<string>()), Thunder2Rf: StrToRf(snap["thunder2RF"]?.GetValue<string>()),
+        Blizzard1Rf: StrToRf(snap["blizzard1RF"]?.GetValue<string>()), Blizzard2Rf: StrToRf(snap["blizzard2RF"]?.GetValue<string>()));
 
     private static string? RfToStr(RF v) => v switch { RF.Real => "real", RF.Fake => "fake", _ => null };
     private static RF StrToRf(string? s) => s switch { "real" => RF.Real, "fake" => RF.Fake, _ => RF.None };
