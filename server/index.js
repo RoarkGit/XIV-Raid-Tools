@@ -1,12 +1,67 @@
 const { WebSocketServer, WebSocket } = require('ws');
 const http = require('http');
+const crypto = require('crypto');
 
 const PORT = process.env.PORT || 3000;
 const READY_CHECK_TIMEOUT_MS = 30000;
 
+// Salts the per-connection IP hash used for anonymous unique-user counting
+// (see `fingerprint`). Set this in the deploy environment so counts stay
+// comparable across restarts; falling back to a random value means each
+// process boot gets its own fingerprint space (fine for a single run, but
+// today's count won't line up with tomorrow's after a redeploy).
+const FINGERPRINT_SALT = process.env.FINGERPRINT_SALT || crypto.randomBytes(16).toString('hex');
+if (!process.env.FINGERPRINT_SALT) {
+  console.log('[metrics] FINGERPRINT_SALT not set - using an ephemeral salt for this process only');
+}
+
+// One-way, salted per-IP hash for counting unique users without retaining
+// the IP itself. This is for rough usage metrics, not access control - IPv4
+// space is small enough that a salted hash isn't hardened against a
+// determined offline search of it, so treat fingerprints as "probably
+// distinct people," not as a security identifier.
+function fingerprint(ip) {
+  return crypto.createHash('sha256').update(FINGERPRINT_SALT + ip).digest('hex').slice(0, 16);
+}
+
 const rooms = new Map(); // roomId -> Set<ws>
 const roomPasswords = new Map(); // roomId -> string, only present when the room was created with one
 const readyChecks = new Map(); // roomId -> { ready: Set<ws>, timer }, only present while a check is active
+// roomId -> { createdAt, peakSize, fingerprints }, tracked from `create`
+// until the room empties out, purely for the `[session]` summary log line
+// and the aggregate /metrics counters.
+const roomMeta = new Map();
+
+let totalConnections = 0;
+let totalRoomsCreated = 0;
+const allTimeFingerprints = new Set();
+let dailyFingerprints = new Set();
+let dailyKey = new Date().toISOString().slice(0, 10);
+
+// Rolls dailyFingerprints over at UTC midnight and records `fp` as seen
+// today/ever. Called on every connection so the rollover check doesn't need
+// its own timer.
+function touchFingerprint(fp) {
+  const today = new Date().toISOString().slice(0, 10);
+  if (today !== dailyKey) {
+    dailyKey = today;
+    dailyFingerprints = new Set();
+  }
+  dailyFingerprints.add(fp);
+  allTimeFingerprints.add(fp);
+}
+
+// Called on create/join to fold this connection into its room's metrics:
+// peak size (reusing connectedCount's plugin/webapp IP-pairing so it means
+// the same thing as the live "N connected" clients see) and the set of
+// distinct people who've passed through, for the summary log on teardown.
+function touchRoomMeta(id, ws) {
+  const meta = roomMeta.get(id);
+  if (!meta) return;
+  meta.fingerprints.add(ws._fp);
+  meta.peakSize = Math.max(meta.peakSize, connectedCount(id));
+}
+
 // roomId -> the most recent `state` payload relayed in that room. Replayed
 // (see `join`) to whoever joins/rejoins next so they don't start blank,
 // stored and replayed completely opaquely, same as the live broadcast, so
@@ -102,7 +157,48 @@ function clearReadyCheck(id) {
   readyChecks.delete(id);
 }
 
-const server = http.createServer((_req, res) => { res.writeHead(200); res.end('OK'); });
+const server = http.createServer((req, res) => {
+  if (req.url === '/metrics') {
+    let activeConnections = 0;
+    for (const set of rooms.values()) activeConnections += set.size;
+    const body = JSON.stringify({
+      uptimeSec: Math.floor(process.uptime()),
+      activeRooms: rooms.size,
+      activeConnections,
+      totalConnectionsSinceStart: totalConnections,
+      totalRoomsCreatedSinceStart: totalRoomsCreated,
+      uniqueUsersToday: dailyFingerprints.size,
+      uniqueUsersSinceStart: allTimeFingerprints.size,
+    });
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(body);
+    return;
+  }
+  if (req.url === '/sessions') {
+    // For checking "is it safe to restart/redeploy right now" - lists every
+    // room that's still open, not just an aggregate count. `connected` is
+    // the plugin/webapp-paired live count (same number clients see as "N
+    // connected"), separate from `peakSize` (the room's high-water mark)
+    // and `uniqueUsers` (distinct fingerprints that have passed through),
+    // both of which persist across members leaving and rejoining.
+    const list = [];
+    for (const id of rooms.keys()) {
+      const meta = roomMeta.get(id);
+      list.push({
+        room: id,
+        connected: connectedCount(id),
+        peakSize: meta ? meta.peakSize : connectedCount(id),
+        uniqueUsers: meta ? meta.fingerprints.size : null,
+        ageSec: meta ? Math.round((Date.now() - meta.createdAt) / 1000) : null,
+      });
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(list));
+    return;
+  }
+  res.writeHead(200);
+  res.end('OK');
+});
 const wss = new WebSocketServer({ server });
 
 wss.on('connection', (ws, req) => {
@@ -112,6 +208,9 @@ wss.on('connection', (ws, req) => {
   // remoteAddress is Railway's proxy, not the caller - the real client IP
   // only shows up in the forwarded-for header it sets.
   ws._ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress;
+  ws._fp = fingerprint(ws._ip);
+  totalConnections++;
+  touchFingerprint(ws._fp);
 
   ws.on('message', (raw) => {
     let msg;
@@ -139,6 +238,9 @@ wss.on('connection', (ws, req) => {
       ws._room = id;
       if (msg.client === 'plugin') ws._client = 'plugin';
       console.log(`[create] room=${id} ip=${ws._ip} client=${ws._client}`);
+      totalRoomsCreated++;
+      roomMeta.set(id, { createdAt: Date.now(), peakSize: 0, fingerprints: new Set() });
+      touchRoomMeta(id, ws);
       ws.send(JSON.stringify({ type: 'created', room: id, hasPassword: !!password }));
       broadcastCount(id);
 
@@ -165,6 +267,7 @@ wss.on('connection', (ws, req) => {
       rooms.get(id).add(ws);
       ws._room = id;
       if (msg.client === 'plugin') ws._client = 'plugin';
+      touchRoomMeta(id, ws);
       // hasPassword reflects whether the ROOM actually requires one, not
       // whether this joiner happened to type something into that field,
       // without which a client that typed a password joining an unprotected
@@ -242,6 +345,12 @@ wss.on('connection', (ws, req) => {
     if (ws._room && rooms.has(ws._room)) {
       rooms.get(ws._room).delete(ws);
       if (rooms.get(ws._room).size === 0) {
+        const meta = roomMeta.get(ws._room);
+        if (meta) {
+          const durationSec = Math.round((Date.now() - meta.createdAt) / 1000);
+          console.log(`[session] room=${ws._room} peakSize=${meta.peakSize} uniqueUsers=${meta.fingerprints.size} durationSec=${durationSec}`);
+        }
+        roomMeta.delete(ws._room);
         rooms.delete(ws._room);
         roomPasswords.delete(ws._room);
         clearReadyCheck(ws._room);

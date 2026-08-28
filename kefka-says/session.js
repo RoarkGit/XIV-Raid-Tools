@@ -39,6 +39,17 @@ const Session = (() => {
   let _desiredRoom = null;
   let _reconnectAttempt = 0;
   let _reconnectTimer = null;
+  // Set right before a `create` fallback fires because a `join` came back
+  // "Room not found" (the relay restarted mid-session and lost the room, or
+  // a manually-typed code just didn't exist) - checked once the matching
+  // 'created' comes back so we push our own current state as the room's
+  // opening state instead of leaving the server's copy blank until whatever
+  // we happen to change next (see the 'created'/'joined' branch below).
+  // Never true for a plain "create a fresh room" (no prior code typed) -
+  // there's nothing worth preserving there. Cleared unconditionally on the
+  // next 'created' or 'joined', so a stale true from an attempt that never
+  // completed can't leak into an unrelated later success.
+  let _pendingRecreate = false;
   const RECONNECT_DELAYS = [1000, 2000, 5000, 10000, 20000];
 
   // Supplied by the embedding tool via init() - getSharedState() returns
@@ -209,6 +220,8 @@ const Session = (() => {
         if (!msg.hasPassword) P.password = null;
         _desiredRoom = P.sessionId;
         _reconnectAttempt = 0;
+        if (msg.type === 'created' && _pendingRecreate) syncState();
+        _pendingRecreate = false;
         renderSession();
       } else if (msg.type === 'count') {
         P.count = msg.count;
@@ -290,6 +303,7 @@ const Session = (() => {
       () => _ws.send(JSON.stringify({ type: 'join', room, password: P.password || undefined, client: 'webapp' })),
       () => {
         if (_desiredRoom !== room) return;
+        _pendingRecreate = true;
         connectWS(
           () => _ws.send(JSON.stringify({ type: 'create', room, password: P.password || undefined, client: 'webapp' })),
           () => { if (_desiredRoom === room) scheduleReconnect(); },
@@ -327,6 +341,7 @@ const Session = (() => {
       () => _ws.send(JSON.stringify({ type: 'join', room, password: pw || undefined, client: 'webapp' })),
       (errorMsg) => {
         if (errorMsg === 'Room not found.') {
+          _pendingRecreate = true;
           connectWS(() => _ws.send(JSON.stringify({ type: 'create', room, password: pw || undefined, client: 'webapp' })));
         } else {
           defaultError(errorMsg);
