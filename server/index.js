@@ -4,6 +4,13 @@ const crypto = require('crypto');
 
 const PORT = process.env.PORT || 3000;
 const READY_CHECK_TIMEOUT_MS = 30000;
+// Well under typical proxy/NAT idle-connection timeouts (commonly 60-120s),
+// so a quiet room (nobody's changed anything in a while) never looks idle
+// to whatever's sitting between client and server. Also doubles as dead-peer
+// detection - see the interval below - so a laptop-lid-closed disconnect
+// gets noticed and cleaned up within roughly one interval instead of sitting
+// in `rooms` until the OS's own (often much longer) TCP keepalive gives up.
+const HEARTBEAT_INTERVAL_MS = 30000;
 
 // Salts the per-connection IP hash used for anonymous unique-user counting
 // (see `fingerprint`). Set this in the deploy environment so counts stay
@@ -52,9 +59,9 @@ function touchFingerprint(fp) {
 }
 
 // Called on create/join to fold this connection into its room's metrics:
-// peak size (reusing connectedCount's plugin/webapp IP-pairing so it means
-// the same thing as the live "N connected" clients see) and the set of
-// distinct people who've passed through, for the summary log on teardown.
+// peak size (reusing connectedCount so it means the same thing as the live
+// "N connected" clients see) and the set of distinct people who've passed
+// through, for the summary log on teardown.
 function touchRoomMeta(id, ws) {
   const meta = roomMeta.get(id);
   if (!meta) return;
@@ -90,28 +97,13 @@ function webappCount(id) {
   return n;
 }
 
-// Per-IP, pair off plugin vs. webapp connections rather than collapsing the
-// whole IP to 1 - the same person often has both the webapp tab and the
-// Dalamud plugin connected at once (that pair should count as 1), but two
-// different people behind the same NAT (same house/LAN) each running their
-// own plugin should still count as 2. Taking max(pluginCount, webappCount)
-// per IP achieves both: one plugin + one webapp at an IP is 1 pair -> 1;
-// two plugins (+ zero or two webapps) at an IP is 2 people's clients -> 2.
-// Still wrong if one housemate uses ONLY the webapp and the other ONLY the
-// plugin (pairs off as 1 when it's really 2) - there's no signal here to
-// tell that apart from one person's own plugin+webapp pair, since the
-// plugin is the primary interface this can't fully avoid.
+// One connection is one person - nobody's expected to run two clients (two
+// plugin instances, two webapp tabs, or one of each) for themselves, so
+// distinct sockets in a room is exactly the room's headcount, including
+// two different people behind the same NAT (same house/LAN) each running
+// their own client.
 function connectedCount(id) {
-  if (!rooms.has(id)) return 0;
-  const perIp = new Map(); // ip -> { plugin, webapp }
-  for (const client of rooms.get(id)) {
-    const entry = perIp.get(client._ip) || { plugin: 0, webapp: 0 };
-    if (client._client === 'plugin') entry.plugin++; else entry.webapp++;
-    perIp.set(client._ip, entry);
-  }
-  let total = 0;
-  for (const { plugin, webapp } of perIp.values()) total += Math.max(plugin, webapp);
-  return total;
+  return rooms.has(id) ? rooms.get(id).size : 0;
 }
 
 // Broadcast (not just to the client that just joined/left) since everyone
@@ -177,10 +169,10 @@ const server = http.createServer((req, res) => {
   if (req.url === '/sessions') {
     // For checking "is it safe to restart/redeploy right now" - lists every
     // room that's still open, not just an aggregate count. `connected` is
-    // the plugin/webapp-paired live count (same number clients see as "N
-    // connected"), separate from `peakSize` (the room's high-water mark)
-    // and `uniqueUsers` (distinct fingerprints that have passed through),
-    // both of which persist across members leaving and rejoining.
+    // the live count (same number clients see as "N connected"), separate
+    // from `peakSize` (the room's high-water mark) and `uniqueUsers`
+    // (distinct fingerprints that have passed through), both of which
+    // persist across members leaving and rejoining.
     const list = [];
     for (const id of rooms.keys()) {
       const meta = roomMeta.get(id);
@@ -201,6 +193,18 @@ const server = http.createServer((req, res) => {
 });
 const wss = new WebSocketServer({ server });
 
+// Keeps connections alive through idle proxy/NAT timeouts and detects dead
+// peers that never sent a clean close (lid closed, network yanked, app
+// crashed) - terminate() fires the same 'close' handler as a normal
+// disconnect, so room/roomMeta/readyCheck cleanup below all still apply.
+setInterval(() => {
+  for (const ws of wss.clients) {
+    if (ws._isAlive === false) { ws.terminate(); continue; }
+    ws._isAlive = false;
+    ws.ping();
+  }
+}, HEARTBEAT_INTERVAL_MS);
+
 wss.on('connection', (ws, req) => {
   ws._room = null;
   ws._client = 'webapp'; // overwritten below if create/join's payload says otherwise
@@ -211,6 +215,11 @@ wss.on('connection', (ws, req) => {
   ws._fp = fingerprint(ws._ip);
   totalConnections++;
   touchFingerprint(ws._fp);
+  // Cleared on every pong (see the heartbeat interval below); a socket
+  // that's still false when the next tick comes around hasn't answered the
+  // last ping at all, so it's terminated as dead rather than pinged again.
+  ws._isAlive = true;
+  ws.on('pong', () => { ws._isAlive = true; });
 
   ws.on('message', (raw) => {
     let msg;
