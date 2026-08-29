@@ -22,7 +22,7 @@ Supports real-time sync via a shared room code so the whole static can see share
 
 Sync is handled by a lightweight WebSocket relay server hosted on Railway. No state is stored server-side; the server only relays messages between clients in the same room.
 
-**Also available as a Dalamud plugin** ([`XIVRaidToolsPlugin/`](XIVRaidToolsPlugin/)) - an in-game ImGui window synced live with the webapp over the same relay, so a room can mix players using the browser tool and players using the in-game one. Notable extras: a "Results only" display mode for players who send state via in-game macros instead of clicking buttons, and a "Two-cast Thunder & Blizzard" toggle for pulls where those casts happen twice per phase (the call is derived from how the two casts combine, rather than either cast alone). See that directory's own README for installing, building, and its slash-command reference.
+**Also available as a Dalamud plugin** ([`XIVRaidToolsPlugin/`](XIVRaidToolsPlugin/)) - an in-game ImGui window synced live with the webapp over the same relay, so a room can mix players using the browser tool and players using the in-game one. Notable extras: a "Results only" display mode for players who send state via in-game macros instead of clicking buttons, a "Two-cast Thunder & Blizzard" toggle for pulls where those casts happen twice per phase (the call is derived from how the two casts combine, rather than either cast alone), and two-stage macro queuing so a mechanic macro and a shared real/fake macro can fire in either order and still resolve correctly. See that directory's own README for installing, building, and its slash-command reference.
 
 ---
 

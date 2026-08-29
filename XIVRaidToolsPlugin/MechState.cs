@@ -11,6 +11,12 @@ public enum RF { None, Real, Fake }
 public enum Pos { None, Water, Lightning }
 public enum FloorType { None, Inferno, Tsunami }
 
+// The 5 bare mechanic commands that support two-stage macro queuing (see
+// PendingMechanic/PendingRf below and Plugin.cs's StageOrResolve/
+// HandleValueCommand) - not gco1/gco2/element*/thunder1-2/blizzard1-2,
+// which stay explicit-argument-only.
+public enum Mechanic { None, Gco, Inferno, Tsunami, Thunder, Blizzard }
+
 // A snapshot of one pull's mechanic state, taken right before Reset() clears
 // it - lets a misclick be undone, or an earlier pull's calls be reviewed.
 // Local-only (like G1Pos/G2Pos/G1Accel/G2Accel - see ClearLocalDebuffs),
@@ -96,6 +102,19 @@ public sealed class MechState : ISyncedState
     public bool G1Accel, G2Accel;
     public FloorType It1Type;
     public bool EnforceOrder;
+
+    // Two-stage macro queuing (see Plugin.cs's StageOrResolve/
+    // HandleValueCommand): at most one of these is ever non-None at a time -
+    // whichever of a bare mechanic command (gco/inferno/tsunami/thunder/
+    // blizzard) or a bare "real"/"fake" command lands FIRST stages itself
+    // here; the second one to land resolves the pairing immediately (via
+    // ApplyMechanic) and clears whichever of these it consumed. Personal,
+    // like G1Pos/G1Accel above - never synced (not part of Serialize
+    // below), and cleared alongside them for the same reason: a stale
+    // queued command left over from a past pull is exactly the kind of
+    // half-reset ClearLocalDebuffs exists to prevent.
+    public RF PendingRf;
+    public Mechanic PendingMechanic;
 
     // it2type() in app.js
     public FloorType It2Type => It1Type switch
@@ -255,6 +274,8 @@ public sealed class MechState : ISyncedState
     {
         G1Pos = G2Pos = Pos.None;
         G1Accel = G2Accel = false;
+        PendingRf = RF.None;
+        PendingMechanic = Mechanic.None;
     }
 
     // ── ISyncedState ─────────────────────────────────────────────────────

@@ -30,6 +30,12 @@ same WebSocket relay (`server/index.js`).
 - "Results only" mode (`/xrt config`): hides the button/input column
   entirely, showing just the derived status column - for players who send
   state via in-game macros instead of clicking buttons themselves.
+- Two-stage macro queuing: a bare mechanic command (`gco`, `tsunami`,
+  `inferno`, `thunder`, `blizzard`) and a bare `real`/`fake` command can be
+  fired in either order, from separate macros, and still resolve to the
+  same call the instant the second one lands - see the Commands section
+  below. Lets a macro-driven player get by on one macro per mechanic plus
+  two shared result macros, instead of a real/fake pair for each.
 - Deliberately does not read any game state (party list, duty, casts). It's
   a synced display, same scope as the webapp, just in an ImGui window.
 
@@ -110,21 +116,6 @@ available from the command line too, for a macro or hotkey:
   a Floor AOE's Cast row. The first call of either name claims Floor AOE
   #1 for that shape (Floor AOE #2 is always the other shape); a later call
   naming the other shape targets Floor AOE #2 instead.
-- `/xrt kefka element real|fake`: `tsunami`/`inferno`'s granular sibling -
-  splits the combined "shape + result" call into two separate ones, for a
-  macro that populates the shape and the result at different times. Targets
-  whichever Floor AOE cast is not yet called (1st, then 2nd), the same
-  order-of-occurrence rule as `gco`.
-- `/xrt kefka element inferno|tsunami`: the other half - names Floor AOE
-  #1's shape without touching either cast's Real/Fake result (Floor AOE #2
-  is always the other shape, same as `tsunami`/`inferno` above). So
-  `element fake` → `element inferno` → `element fake` ends up equivalent to
-  `inferno fake` → `tsunami fake`.
-- `/xrt kefka element1|element2 [real|fake|inferno|tsunami]`: same as
-  `gco1`/`gco2` - targets that exact Floor AOE cast directly instead of
-  inferring which one from order of occurrence. `element2 inferno|tsunami`
-  names what Floor AOE #2's shape should be, which sets Floor AOE #1 to the
-  complementary shape (#2's shape is never stored independently).
 - `/xrt kefka thunder real|fake` / `/xrt kefka blizzard real|fake`: with
   "Two-cast Thunder & Blizzard" off (the default), sets that element's Cast
   row directly, no target inference needed. With it on, behaves like `gco`
@@ -132,6 +123,20 @@ available from the command line too, for a macro or hotkey:
 - `/xrt kefka thunder1|thunder2 real|fake` / `/xrt kefka blizzard1|blizzard2
   real|fake`: same as `gco1`/`gco2` - targets that exact cast directly
   regardless of the toggle above, for when a macro needs to be explicit.
+- `/xrt kefka real` / `/xrt kefka fake`: two-stage macro queuing, to cut
+  down on macro bloat for someone who'd rather have one macro per mechanic
+  (`gco`, `inferno`, `tsunami`, `thunder`, `blizzard`) plus two shared
+  macros for the result, instead of a real/fake pair for each. Pressing
+  `real`/`fake` alone queues that result for whichever bare mechanic
+  command (no `real|fake` argument of its own) is pressed next; pressing a
+  bare mechanic command first queues the mechanic instead and waits for the
+  result. Either order resolves the pairing the instant the second press
+  lands - `gco` then `fake`, or `fake` then `gco`, both call `gco fake`.
+  Only affects a mechanic call left bare: an explicit `gco real` (or
+  `tsunami fake`, `thunder1 real`, etc.) still fires immediately as always,
+  completely unaffected by anything queued. At most one call can be queued
+  at a time; the window shows what's queued and what it's waiting on, and
+  Reset clears it, same as the personal debuff fields above.
 - `/xrt kefka reset`: same as clicking Reset.
 
 An unknown tool, an unrecognized subcommand, or a `gco`/`thunder`/`blizzard`

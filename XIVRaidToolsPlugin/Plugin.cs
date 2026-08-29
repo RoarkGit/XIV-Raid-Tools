@@ -49,16 +49,14 @@ public sealed class Plugin : IDalamudPlugin
                 + "    gco [real|fake|water|lightning|bomb]\n"
                 + "    gco1|gco2 [real|fake|water|lightning|bomb]\n"
                 + "    <tsunami|inferno> [real|fake]\n"
-                + "    element [real|fake|inferno|tsunami]\n"
-                + "    element1|element2 [real|fake|inferno|tsunami]\n"
                 + "    <thunder|blizzard> [real|fake]\n"
                 + "    <thunder1|thunder2|blizzard1|blizzard2> [real|fake]\n"
+                + "    real|fake\n"
                 + "    reset\n"
                 + "  /xrt config\n"
-                + "Bare gco/tsunami/inferno commands assume order of occurrence (first call sets slot 1, second sets slot 2); gco1/gco2 target one explicitly instead. "
-                + "element is tsunami/inferno split into separate calls: element real/fake targets whichever Floor AOE cast is unresolved (same order-of-occurrence rule as gco), "
-                + "element inferno/tsunami claims slot 1's shape without touching either cast, and element1/element2 target a specific cast's real/fake or shape directly "
-                + "(element2 inferno/tsunami names what slot 2 should be, which sets slot 1 to the complementary shape - slot 2's shape is never stored independently). "
+                + "Bare gco/tsunami/inferno/thunder/blizzard commands assume order of occurrence (first call sets slot 1, second sets slot 2); gco1/gco2 (etc.) target one explicitly instead. "
+                + "Leaving off gco/tsunami/inferno/thunder/blizzard's own real|fake argument queues that call to fire as soon as a separate real/fake command lands (or resolves immediately if one's already queued) - "
+                + "so e.g. \"gco\" then \"fake\", or \"fake\" then \"gco\", both call gco fake; this only ever affects a mechanic call left bare, an explicit \"gco real\" still fires immediately as always. "
                 + "Bare thunder/blizzard always target the 1st cast unless \"Two-cast Thunder & Blizzard\" is enabled in the window, in which case they auto-pick 1st then 2nd the same way gco does; "
                 + "thunder1/thunder2/blizzard1/blizzard2 always target that exact cast regardless of the toggle. "
                 + "With the toggle on, each element's real/fake call is whichever way its two casts combine (both the same -> Real, different -> Fake), not either cast's raw value.",
@@ -132,6 +130,23 @@ public sealed class Plugin : IDalamudPlugin
 
         switch (sub)
         {
+            // Two-stage macro queuing: pressing "real"/"fake" alone stages
+            // that value for whichever bare mechanic command (below) lands
+            // next; pressing one of those bare mechanic commands first
+            // stages the mechanic instead and waits for the value. Either
+            // order resolves the pairing the instant the second command
+            // lands - see HandleValueCommand/StageOrResolve. An already-
+            // explicit call (e.g. "gco real") never touches this at all;
+            // it's still handled by the unguarded/"real"/"fake"-guarded
+            // cases below exactly as before.
+            case "real" or "fake":
+                HandleValueCommand(sub);
+                break;
+
+            case "gco" when arg1 == "":
+                if (!StageOrResolve(Mechanic.Gco)) return;
+                break;
+
             case "gco":
                 if (!HandleGco(arg1)) return;
                 break;
@@ -144,30 +159,24 @@ public sealed class Plugin : IDalamudPlugin
                 if (!HandleGcoExplicit(2, arg1)) return;
                 break;
 
+            case "tsunami" when arg1 == "":
+                if (!StageOrResolve(Mechanic.Tsunami)) return;
+                break;
+
             case "tsunami" when arg1 is "real" or "fake":
                 HandleFloor(FloorType.Tsunami, ParseRf(arg1));
+                break;
+
+            case "inferno" when arg1 == "":
+                if (!StageOrResolve(Mechanic.Inferno)) return;
                 break;
 
             case "inferno" when arg1 is "real" or "fake":
                 HandleFloor(FloorType.Inferno, ParseRf(arg1));
                 break;
 
-            // "element" is tsunami/inferno's granular sibling: it separates
-            // the Real/Fake call from the inferno/tsunami shape call instead
-            // of combining both in one word, so a macro can populate the two
-            // Floor AOE casts one click at a time (element fake -> element
-            // inferno -> element fake, say) rather than needing to know both
-            // the shape AND the result in a single call. See HandleFloorCast.
-            case "element" when arg1 is "real" or "fake" or "inferno" or "tsunami":
-                if (!HandleFloorCast(arg1)) return;
-                break;
-
-            case "element1" when arg1 is "real" or "fake" or "inferno" or "tsunami":
-                if (!HandleFloorExplicit(1, arg1)) return;
-                break;
-
-            case "element2" when arg1 is "real" or "fake" or "inferno" or "tsunami":
-                if (!HandleFloorExplicit(2, arg1)) return;
+            case "thunder" when arg1 == "":
+                if (!StageOrResolve(Mechanic.Thunder)) return;
                 break;
 
             case "thunder" when arg1 is "real" or "fake":
@@ -180,6 +189,10 @@ public sealed class Plugin : IDalamudPlugin
 
             case "thunder2" when arg1 is "real" or "fake":
                 if (!HandleElement(true, 2, arg1)) return;
+                break;
+
+            case "blizzard" when arg1 == "":
+                if (!StageOrResolve(Mechanic.Blizzard)) return;
                 break;
 
             case "blizzard" when arg1 is "real" or "fake":
@@ -214,8 +227,8 @@ public sealed class Plugin : IDalamudPlugin
     }
 
     private const string HelpText = "Usage: /xrt kefka gco[1|2] [real|fake|water|lightning|bomb], "
-        + "/xrt kefka <tsunami|inferno> [real|fake], /xrt kefka element[1|2] [real|fake|inferno|tsunami], "
-        + "/xrt kefka <thunder|blizzard>[1|2] [real|fake], /xrt kefka reset";
+        + "/xrt kefka <tsunami|inferno> [real|fake], "
+        + "/xrt kefka <thunder|blizzard>[1|2] [real|fake], /xrt kefka real|fake, /xrt kefka reset";
 
     private static RF ParseRf(string arg) => arg == "real" ? RF.Real : RF.Fake;
 
@@ -233,6 +246,66 @@ public sealed class Plugin : IDalamudPlugin
     // count, which is exactly what was happening. Only the opposite value
     // or Reset changes it away from an already-set value now.
     private static void SetRfIdempotent(ref RF field, RF value) => field = value;
+
+    // Bare mechanic command (gco/inferno/tsunami/thunder/blizzard, no
+    // real|fake argument): if a value's already staged - someone pressed
+    // "real"/"fake" first - resolve immediately using it; otherwise stage
+    // THIS mechanic and wait for the value to arrive from a later "real"/
+    // "fake" press. Mirrors HandleValueCommand's opposite-order path;
+    // together they make the pairing order-independent. Always "succeeds"
+    // (returns true, so the window still opens) when merely staging - an
+    // incomplete pairing isn't an error, just not resolved yet.
+    private bool StageOrResolve(Mechanic mechanic)
+    {
+        var s = _session.State;
+        if (s.PendingRf != RF.None)
+        {
+            var v = s.PendingRf;
+            s.PendingRf = RF.None;
+            return ApplyMechanic(mechanic, v);
+        }
+        s.PendingMechanic = mechanic;
+        return true;
+    }
+
+    // "real"/"fake" alone: mirrors StageOrResolve for the opposite order -
+    // if a mechanic's already staged, resolve that pairing now; otherwise
+    // stage the value and wait for a bare mechanic command.
+    private void HandleValueCommand(string word)
+    {
+        var s = _session.State;
+        var v = ParseRf(word);
+        if (s.PendingMechanic != Mechanic.None)
+        {
+            var mechanic = s.PendingMechanic;
+            s.PendingMechanic = Mechanic.None;
+            ApplyMechanic(mechanic, v);
+        }
+        else
+        {
+            s.PendingRf = v;
+        }
+    }
+
+    // The single mapping from a resolved (mechanic, value) pair back to
+    // whichever existing Handle* method an explicit call (e.g. "gco real")
+    // already uses - so a fully-staged pairing behaves identically to that
+    // explicit call, and reuses its auto-order slot-pick logic rather than
+    // reimplementing it. Both StageOrResolve and HandleValueCommand funnel
+    // through here regardless of which order the pairing completed in.
+    private bool ApplyMechanic(Mechanic mechanic, RF v)
+    {
+        var word = v == RF.Real ? "real" : "fake";
+        switch (mechanic)
+        {
+            case Mechanic.Gco: return HandleGco(word);
+            case Mechanic.Inferno: HandleFloor(FloorType.Inferno, v); return true;
+            case Mechanic.Tsunami: HandleFloor(FloorType.Tsunami, v); return true;
+            case Mechanic.Thunder: return HandleElement(true, 0, word);
+            case Mechanic.Blizzard: return HandleElement(false, 0, word);
+            default: return false;
+        }
+    }
 
     // "gco real"/"gco fake" targets whichever GCO's Cast is still unresolved
     // (G1 first, then G2) - once both are set, there's nothing left to call
@@ -423,99 +496,6 @@ public sealed class Plugin : IDalamudPlugin
     private static void ClaimFloorType(MechState s, FloorType type)
     {
         if (s.It1Type == FloorType.None) s.It1Type = type;
-    }
-
-    // "element real"/"element fake" is tsunami/inferno's shape-less sibling:
-    // it targets whichever Floor AOE cast is still unresolved (slot 1 first,
-    // then slot 2), the same order-of-occurrence convention as HandleGco,
-    // leaving the shape to be called separately via "element inferno"/
-    // "element tsunami" - which just claims slot 1's type the same way
-    // HandleFloor's combined form does, without touching either cast.
-    // Returns whether the command did anything, same as HandleGco.
-    private bool HandleFloorCast(string arg)
-    {
-        var s = _session.State;
-        switch (arg)
-        {
-            case "real" or "fake":
-            {
-                var slot = s.It1Rf == RF.None ? 1 : s.It2Rf == RF.None ? 2 : 0;
-                if (slot == 0)
-                {
-                    ReportInvalidCommand("XIV Raid Tools: both Floor AOE casts are already called, reset first. "
-                        + "Use element1/element2 to target a specific one directly instead.");
-                    return false;
-                }
-                return ApplyFloorRf(slot, arg);
-            }
-
-            case "inferno" or "tsunami":
-                return ApplyFloorType(1, arg);
-
-            default:
-                ReportInvalidCommand("XIV Raid Tools: usage is /xrt kefka element [real|fake|inferno|tsunami]");
-                return false;
-        }
-    }
-
-    // "element inferno"/"element tsunami" (slot 1) and "element1
-    // inferno"/"element2 tsunami" etc. (explicit) name a floor shape without
-    // an accompanying Real/Fake call - the type-only half of HandleFloor's
-    // combined form. Only slot 1's type is ever independently stored (see
-    // MechState.It2Type) - targeting slot 2 explicitly just means "I want
-    // THIS shape at slot 2", which is the complement of whatever slot 1 must
-    // then be, so that's what actually gets written. No-ops (reporting an
-    // error) if slot 1's type is already the OTHER shape; a redundant call
-    // confirming the shape already in place is treated as a harmless no-op,
-    // same as HandleGco's alreadyConsistent check.
-    private bool ApplyFloorType(int slot, string arg)
-    {
-        var s = _session.State;
-        var requested = arg == "inferno" ? FloorType.Inferno : FloorType.Tsunami;
-        var type = slot == 1 ? requested : Complement(requested);
-        if (s.It1Type != FloorType.None && s.It1Type != type)
-        {
-            ReportInvalidCommand($"XIV Raid Tools: Floor AOE's type is already {s.It1Type}, reset first. "
-                + "Use element1/element2 to target a specific cast directly instead.");
-            return false;
-        }
-        ClaimFloorType(s, type);
-        _session.PushState();
-        return true;
-    }
-
-    private static FloorType Complement(FloorType type) => type switch
-    {
-        FloorType.Inferno => FloorType.Tsunami,
-        FloorType.Tsunami => FloorType.Inferno,
-        _ => FloorType.None,
-    };
-
-    // "element1"/"element2" bypass the order-of-occurrence inference
-    // entirely and target that exact Floor AOE cast, mirroring gco1/gco2 -
-    // for when a macro needs to be explicit rather than relying on
-    // "whichever isn't resolved yet". No "already resolved" guard, same as
-    // HandleGcoExplicit.
-    private bool HandleFloorExplicit(int slot, string arg) => arg switch
-    {
-        "real" or "fake" => ApplyFloorRf(slot, arg),
-        "inferno" or "tsunami" => ApplyFloorType(slot, arg),
-        _ => ReportFloorUsage(),
-    };
-
-    private bool ReportFloorUsage()
-    {
-        ReportInvalidCommand("XIV Raid Tools: usage is /xrt kefka element1|element2 [real|fake|inferno|tsunami]");
-        return false;
-    }
-
-    private bool ApplyFloorRf(int slot, string arg)
-    {
-        var s = _session.State;
-        var v = ParseRf(arg);
-        if (slot == 1) SetRfIdempotent(ref s.It1Rf, v); else SetRfIdempotent(ref s.It2Rf, v);
-        _session.PushState();
-        return true;
     }
 
     public void Dispose()

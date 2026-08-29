@@ -220,6 +220,7 @@ public sealed class KefkaSaysWindow : Window
             if (_config.ResultsOnly)
             {
                 DrawStatusColumn();
+                DrawQueueIndicator();
                 return;
             }
 
@@ -297,6 +298,8 @@ public sealed class KefkaSaysWindow : Window
 
                 ImGui.EndTable();
             }
+
+            DrawQueueIndicator();
         }
         finally
         {
@@ -502,6 +505,42 @@ public sealed class KefkaSaysWindow : Window
             });
         }
     }
+
+    // Two-stage macro queuing (see Plugin.cs's StageOrResolve/
+    // HandleValueCommand) is otherwise invisible in the window - without
+    // this, a macro press that only staged half a pairing (nothing to
+    // PushState yet) would leave no sign anything happened at all, making
+    // the NEXT press's result look like it came out of nowhere. Drawn at
+    // the very bottom of the window (see both Draw() call sites) rather
+    // than in DrawTopBar, so it reads as a status line for the whole
+    // window's state, not something scoped to the session controls above
+    // it. At most one of PendingMechanic/PendingRf is ever set (see
+    // MechState's comment), so this is never both at once; entirely absent
+    // (no reserved space) when neither is set.
+    private void DrawQueueIndicator()
+    {
+        var s = _session.State;
+        if (s.PendingMechanic != Mechanic.None)
+        {
+            ImGui.Separator();
+            ImGui.TextColored(Theme.TextDim, $"{MechanicName(s.PendingMechanic)} queued - waiting for Real/Fake.");
+        }
+        else if (s.PendingRf != RF.None)
+        {
+            ImGui.Separator();
+            ImGui.TextColored(Theme.TextDim, $"{RfWord(s.PendingRf)} queued - waiting for a mechanic call.");
+        }
+    }
+
+    private static string MechanicName(Mechanic m) => m switch
+    {
+        Mechanic.Gco => "Grand Cross Omega",
+        Mechanic.Inferno => "Inferno",
+        Mechanic.Tsunami => "Tsunami",
+        Mechanic.Thunder => "Thunder",
+        Mechanic.Blizzard => "Blizzard",
+        _ => "",
+    };
 
     // Position/accel mutations go through MechState.SetPos/ToggleAccel so the
     // cross-player exclusion rules (see MechState.cs) apply the same way
@@ -985,29 +1024,13 @@ public sealed class KefkaSaysWindow : Window
         // spacing out first, so StatusCardGap is the WHOLE gap between boxes.
         SetExactGap(StatusCardGap + extraStretch);
 
-        // Results-only mode has no input-column buttons to show that a cast
-        // has already been called (via "element real/fake") while its shape
-        // ("element inferno/tsunami") hasn't landed yet - both FloorRows
-        // below stay blank until It1Type resolves, since neither can be
-        // attributed to a shape yet. The header badge fills that gap; the
-        // normal two-column mode already shows the same in-between state via
-        // DrawFloorAoeSection's own Cast row highlighting, so it's gated to
-        // ResultsOnly to avoid disturbing that mode's carefully
-        // height-matched status column (see StatusColumnStretch's comment).
-        // Prefers It1Rf when both slots somehow got a call before either
-        // shape did (only reachable via explicit element1/element2) - one
-        // badge can't represent two different values, and slot 1 is the one
-        // that resolves the shape once "element inferno/tsunami" lands.
-        var queuedRf = s.It1Type != FloorType.None ? RF.None : s.It1Rf != RF.None ? s.It1Rf : s.It2Rf;
-        Action? floorHeaderExtra = _config.ResultsOnly && queuedRf != RF.None ? () => QueuedBadge(queuedRf) : null;
-
         GroupCard("Floor AOE", () =>
         {
             var infernoRf = s.It1Type == FloorType.Inferno ? s.It1Rf : s.It2Type == FloorType.Inferno ? s.It2Rf : RF.None;
             FloorRow("Inferno", FloorType.Inferno, infernoRf, AccentTag.Inferno);
             var tsunamiRf = s.It1Type == FloorType.Tsunami ? s.It1Rf : s.It2Type == FloorType.Tsunami ? s.It2Rf : RF.None;
             FloorRow("Tsunami", FloorType.Tsunami, tsunamiRf, AccentTag.Tsunami);
-        }, floorHeaderExtra);
+        });
 
         SetExactGap(StatusCardGap + extraStretch);
 
@@ -1062,27 +1085,6 @@ public sealed class KefkaSaysWindow : Window
 
     private static string RfWord(RF v) => v switch { RF.Real => "Real", RF.Fake => "Fake", _ => "--" };
 
-    // Header-row badge for GroupCard (see DrawStatusColumn's Floor AOE call):
-    // Check/Cross rather than a Unicode checkmark/cross character - these are
-    // the same hand-drawn icons CastRow's Real/Fake buttons use elsewhere
-    // (IconAccentButton), and this font's glyph coverage for those symbols
-    // isn't guaranteed. Sized/colored to sit inline with SectionLabel's own
-    // 11px uppercase text (see GroupCard's SameLine call site).
-    private void QueuedBadge(RF rf)
-    {
-        Icon icon = rf == RF.Real ? Icons.Check : Icons.Cross;
-        var color = Theme.CardColor(rf == RF.Real ? AccentTag.Real : AccentTag.Fake);
-        var size = Sc(12f);
-        var textH = ImGui.GetTextLineHeight() * LabelScale;
-
-        var pos = ImGui.GetCursorScreenPos();
-        icon(ImGui.GetWindowDrawList(), new Vector2(pos.X, pos.Y + (textH - size) / 2f), size, Theme.U32(color));
-        ImGui.Dummy(new Vector2(size, textH));
-
-        ImGui.SameLine(0, Sc(4f));
-        ScaledText("QUEUED", LabelScale, color);
-    }
-
     // A bordered .scard box (bg #0f0f24 + border, rounded) drawn around a
     // section label and its rows. Height is unknown until the rows are laid
     // out, so the content is drawn into draw-list channel 1 first, then the
@@ -1099,7 +1101,7 @@ public sealed class KefkaSaysWindow : Window
         ImGui.SetCursorScreenPos(new Vector2(cur.X, cur.Y - autoSpacing + Sc(gap)));
     }
 
-    private void GroupCard(string label, Action drawRows, Action? headerExtra = null)
+    private void GroupCard(string label, Action drawRows)
     {
         var padTop = Sc(8f);
         var padBot = Sc(8f);
@@ -1127,11 +1129,6 @@ public sealed class KefkaSaysWindow : Window
             ImGui.TableNextRow();
             ImGui.TableNextColumn();
             SectionLabel(label);
-            if (headerExtra is not null)
-            {
-                ImGui.SameLine(0, Sc(8f));
-                headerExtra();
-            }
             ImGui.Spacing();
             drawRows();
             ImGui.EndTable();
