@@ -49,11 +49,16 @@ public sealed class Plugin : IDalamudPlugin
                 + "    gco [real|fake|water|lightning|bomb]\n"
                 + "    gco1|gco2 [real|fake|water|lightning|bomb]\n"
                 + "    <tsunami|inferno> [real|fake]\n"
+                + "    element [real|fake|inferno|tsunami]\n"
+                + "    element1|element2 [real|fake|inferno|tsunami]\n"
                 + "    <thunder|blizzard> [real|fake]\n"
                 + "    <thunder1|thunder2|blizzard1|blizzard2> [real|fake]\n"
                 + "    reset\n"
                 + "  /xrt config\n"
                 + "Bare gco/tsunami/inferno commands assume order of occurrence (first call sets slot 1, second sets slot 2); gco1/gco2 target one explicitly instead. "
+                + "element is tsunami/inferno split into separate calls: element real/fake targets whichever Floor AOE cast is unresolved (same order-of-occurrence rule as gco), "
+                + "element inferno/tsunami claims slot 1's shape without touching either cast, and element1/element2 target a specific cast's real/fake or shape directly "
+                + "(element2 inferno/tsunami names what slot 2 should be, which sets slot 1 to the complementary shape - slot 2's shape is never stored independently). "
                 + "Bare thunder/blizzard always target the 1st cast unless \"Two-cast Thunder & Blizzard\" is enabled in the window, in which case they auto-pick 1st then 2nd the same way gco does; "
                 + "thunder1/thunder2/blizzard1/blizzard2 always target that exact cast regardless of the toggle. "
                 + "With the toggle on, each element's real/fake call is whichever way its two casts combine (both the same -> Real, different -> Fake), not either cast's raw value.",
@@ -147,6 +152,24 @@ public sealed class Plugin : IDalamudPlugin
                 HandleFloor(FloorType.Inferno, ParseRf(arg1));
                 break;
 
+            // "element" is tsunami/inferno's granular sibling: it separates
+            // the Real/Fake call from the inferno/tsunami shape call instead
+            // of combining both in one word, so a macro can populate the two
+            // Floor AOE casts one click at a time (element fake -> element
+            // inferno -> element fake, say) rather than needing to know both
+            // the shape AND the result in a single call. See HandleFloorCast.
+            case "element" when arg1 is "real" or "fake" or "inferno" or "tsunami":
+                if (!HandleFloorCast(arg1)) return;
+                break;
+
+            case "element1" when arg1 is "real" or "fake" or "inferno" or "tsunami":
+                if (!HandleFloorExplicit(1, arg1)) return;
+                break;
+
+            case "element2" when arg1 is "real" or "fake" or "inferno" or "tsunami":
+                if (!HandleFloorExplicit(2, arg1)) return;
+                break;
+
             case "thunder" when arg1 is "real" or "fake":
                 if (!HandleElement(true, 0, arg1)) return;
                 break;
@@ -191,7 +214,8 @@ public sealed class Plugin : IDalamudPlugin
     }
 
     private const string HelpText = "Usage: /xrt kefka gco[1|2] [real|fake|water|lightning|bomb], "
-        + "/xrt kefka <tsunami|inferno> [real|fake], /xrt kefka <thunder|blizzard>[1|2] [real|fake], /xrt kefka reset";
+        + "/xrt kefka <tsunami|inferno> [real|fake], /xrt kefka element[1|2] [real|fake|inferno|tsunami], "
+        + "/xrt kefka <thunder|blizzard>[1|2] [real|fake], /xrt kefka reset";
 
     private static RF ParseRf(string arg) => arg == "real" ? RF.Real : RF.Fake;
 
@@ -385,12 +409,113 @@ public sealed class Plugin : IDalamudPlugin
     private void HandleFloor(FloorType type, RF value)
     {
         var s = _session.State;
-        if (s.It1Type == FloorType.None) s.It1Type = type;
+        ClaimFloorType(s, type);
 
         if (s.It1Type == type) SetRfIdempotent(ref s.It1Rf, value);
         else SetRfIdempotent(ref s.It2Rf, value);
 
         _session.PushState();
+    }
+
+    // Only slot 1's type is ever independently chosen - slot 2's is always
+    // the derived complement (MechState.It2Type) - so claiming a type never
+    // needs a slot number, unlike Real/Fake below.
+    private static void ClaimFloorType(MechState s, FloorType type)
+    {
+        if (s.It1Type == FloorType.None) s.It1Type = type;
+    }
+
+    // "element real"/"element fake" is tsunami/inferno's shape-less sibling:
+    // it targets whichever Floor AOE cast is still unresolved (slot 1 first,
+    // then slot 2), the same order-of-occurrence convention as HandleGco,
+    // leaving the shape to be called separately via "element inferno"/
+    // "element tsunami" - which just claims slot 1's type the same way
+    // HandleFloor's combined form does, without touching either cast.
+    // Returns whether the command did anything, same as HandleGco.
+    private bool HandleFloorCast(string arg)
+    {
+        var s = _session.State;
+        switch (arg)
+        {
+            case "real" or "fake":
+            {
+                var slot = s.It1Rf == RF.None ? 1 : s.It2Rf == RF.None ? 2 : 0;
+                if (slot == 0)
+                {
+                    ReportInvalidCommand("XIV Raid Tools: both Floor AOE casts are already called, reset first. "
+                        + "Use element1/element2 to target a specific one directly instead.");
+                    return false;
+                }
+                return ApplyFloorRf(slot, arg);
+            }
+
+            case "inferno" or "tsunami":
+                return ApplyFloorType(1, arg);
+
+            default:
+                ReportInvalidCommand("XIV Raid Tools: usage is /xrt kefka element [real|fake|inferno|tsunami]");
+                return false;
+        }
+    }
+
+    // "element inferno"/"element tsunami" (slot 1) and "element1
+    // inferno"/"element2 tsunami" etc. (explicit) name a floor shape without
+    // an accompanying Real/Fake call - the type-only half of HandleFloor's
+    // combined form. Only slot 1's type is ever independently stored (see
+    // MechState.It2Type) - targeting slot 2 explicitly just means "I want
+    // THIS shape at slot 2", which is the complement of whatever slot 1 must
+    // then be, so that's what actually gets written. No-ops (reporting an
+    // error) if slot 1's type is already the OTHER shape; a redundant call
+    // confirming the shape already in place is treated as a harmless no-op,
+    // same as HandleGco's alreadyConsistent check.
+    private bool ApplyFloorType(int slot, string arg)
+    {
+        var s = _session.State;
+        var requested = arg == "inferno" ? FloorType.Inferno : FloorType.Tsunami;
+        var type = slot == 1 ? requested : Complement(requested);
+        if (s.It1Type != FloorType.None && s.It1Type != type)
+        {
+            ReportInvalidCommand($"XIV Raid Tools: Floor AOE's type is already {s.It1Type}, reset first. "
+                + "Use element1/element2 to target a specific cast directly instead.");
+            return false;
+        }
+        ClaimFloorType(s, type);
+        _session.PushState();
+        return true;
+    }
+
+    private static FloorType Complement(FloorType type) => type switch
+    {
+        FloorType.Inferno => FloorType.Tsunami,
+        FloorType.Tsunami => FloorType.Inferno,
+        _ => FloorType.None,
+    };
+
+    // "element1"/"element2" bypass the order-of-occurrence inference
+    // entirely and target that exact Floor AOE cast, mirroring gco1/gco2 -
+    // for when a macro needs to be explicit rather than relying on
+    // "whichever isn't resolved yet". No "already resolved" guard, same as
+    // HandleGcoExplicit.
+    private bool HandleFloorExplicit(int slot, string arg) => arg switch
+    {
+        "real" or "fake" => ApplyFloorRf(slot, arg),
+        "inferno" or "tsunami" => ApplyFloorType(slot, arg),
+        _ => ReportFloorUsage(),
+    };
+
+    private bool ReportFloorUsage()
+    {
+        ReportInvalidCommand("XIV Raid Tools: usage is /xrt kefka element1|element2 [real|fake|inferno|tsunami]");
+        return false;
+    }
+
+    private bool ApplyFloorRf(int slot, string arg)
+    {
+        var s = _session.State;
+        var v = ParseRf(arg);
+        if (slot == 1) SetRfIdempotent(ref s.It1Rf, v); else SetRfIdempotent(ref s.It2Rf, v);
+        _session.PushState();
+        return true;
     }
 
     public void Dispose()

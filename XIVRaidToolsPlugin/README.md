@@ -110,6 +110,21 @@ available from the command line too, for a macro or hotkey:
   a Floor AOE's Cast row. The first call of either name claims Floor AOE
   #1 for that shape (Floor AOE #2 is always the other shape); a later call
   naming the other shape targets Floor AOE #2 instead.
+- `/xrt kefka element real|fake`: `tsunami`/`inferno`'s granular sibling -
+  splits the combined "shape + result" call into two separate ones, for a
+  macro that populates the shape and the result at different times. Targets
+  whichever Floor AOE cast is not yet called (1st, then 2nd), the same
+  order-of-occurrence rule as `gco`.
+- `/xrt kefka element inferno|tsunami`: the other half - names Floor AOE
+  #1's shape without touching either cast's Real/Fake result (Floor AOE #2
+  is always the other shape, same as `tsunami`/`inferno` above). So
+  `element fake` → `element inferno` → `element fake` ends up equivalent to
+  `inferno fake` → `tsunami fake`.
+- `/xrt kefka element1|element2 [real|fake|inferno|tsunami]`: same as
+  `gco1`/`gco2` - targets that exact Floor AOE cast directly instead of
+  inferring which one from order of occurrence. `element2 inferno|tsunami`
+  names what Floor AOE #2's shape should be, which sets Floor AOE #1 to the
+  complementary shape (#2's shape is never stored independently).
 - `/xrt kefka thunder real|fake` / `/xrt kefka blizzard real|fake`: with
   "Two-cast Thunder & Blizzard" off (the default), sets that element's Cast
   row directly, no target inference needed. With it on, behaves like `gco`

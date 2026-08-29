@@ -2,6 +2,7 @@ using System;
 using System.Numerics;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Interface;
+using Dalamud.Interface.Utility;
 using Dalamud.Interface.Windowing;
 
 namespace XIVRaidToolsPlugin.Windows;
@@ -108,8 +109,74 @@ public sealed class KefkaSaysWindow : Window
         });
     }
 
-    public override void PreDraw() => Theme.PushWindowChrome();
+    // Wrapping the "Two-cast Thunder & Blizzard" checkbox onto its own row
+    // (see DrawTopBar) keeps IT from overlapping History/Reset, but Enforce
+    // order + History/Reset always share one row with no fallback - so
+    // instead this pins a floor under how narrow the window can even get,
+    // computed fresh every frame (PullHistory's digit count shifts
+    // historyLabel's width) since SizeConstraints is read each frame by
+    // Dalamud's WindowSystem before Begin - see ComputeTopBarMinWidth.
+    public override void PreDraw()
+    {
+        Theme.PushWindowChrome();
+        SizeConstraints = new WindowSizeConstraints
+        {
+            MinimumSize = new Vector2(ComputeTopBarMinWidth(), 0),
+            // Not float.MaxValue: Dalamud's WindowHost multiplies both
+            // Minimum/MaximumSize by ImGuiHelpers.GlobalScale before handing
+            // off to ImGui (see ComputeTopBarMinWidth's comment) - at any
+            // scale above 100% that overflows float.MaxValue to +Infinity.
+            // 100000 is already far past any real monitor and stays finite
+            // after scaling.
+            MaximumSize = new Vector2(100000f, 100000f),
+        };
+    }
+
     public override void PostDraw() => Theme.PopWindowChrome();
+
+    // Mirrors the Enforce-order/History/Reset half of DrawTopBar's own width
+    // math exactly, but runs in PreDraw - before ImGui.Begin, let alone
+    // Draw()'s FramePadding/ItemSpacing pushes - so it pushes the same two
+    // style vars itself first; without that, CalcTextSize/GetFrameHeight
+    // here would measure against ImGui's default style instead of the
+    // chunkier one this window actually renders with, undershooting the
+    // real minimum. Two-cast is deliberately left out of this sum - it's
+    // the one row DrawTopBar already knows how to drop to its own line
+    // instead of enforcing a floor wide enough to always fit it too.
+    private float ComputeTopBarMinWidth()
+    {
+        ImGui.PushStyleVar(ImGuiStyleVar.FramePadding, new Vector2(Sc(6), Sc(6)));
+        ImGui.PushStyleVar(ImGuiStyleVar.ItemSpacing, new Vector2(Sc(6), Sc(4)));
+        try
+        {
+            var s = _session.State;
+            var gap = ImGui.GetStyle().ItemSpacing.X;
+            var enforceW = ImGui.GetFrameHeight() + ImGui.GetStyle().ItemInnerSpacing.X + ImGui.CalcTextSize("Enforce order").X;
+            var resetW = ImGui.CalcTextSize("Reset").X + ImGui.GetStyle().FramePadding.X * 2;
+            var historyW = ImGui.CalcTextSize($"History ({s.PullHistory.Count})").X + ImGui.GetStyle().FramePadding.X * 2;
+            var rowW = enforceW + gap + historyW + gap + resetW;
+
+            // + ScrollbarSize: a vertical scrollbar (once the window is also
+            // too short for its content) reserves this much width out of
+            // GetContentRegionAvail().X the same way narrowing the window
+            // would - this runs in PreDraw, before Draw() knows whether one
+            // will actually show up this frame, so it's included
+            // unconditionally as a margin rather than guessed at.
+            var contentW = rowW + ImGui.GetStyle().WindowPadding.X * 2 + ImGui.GetStyle().ScrollbarSize;
+
+            // SizeConstraints is specified in "unscaled" pixels - Dalamud's
+            // WindowHost multiplies MinimumSize by ImGuiHelpers.GlobalScale
+            // before handing off to ImGui, but CalcTextSize/GetFrameHeight
+            // above already measure real (GlobalScale-applied) screen
+            // pixels, so dividing back out here avoids double-scaling the
+            // floor for anyone running a non-100% Dalamud UI scale.
+            return contentW / ImGuiHelpers.GlobalScale;
+        }
+        finally
+        {
+            ImGui.PopStyleVar(2);
+        }
+    }
 
     public override void Draw()
     {
@@ -333,13 +400,56 @@ public sealed class KefkaSaysWindow : Window
                 break;
         }
 
+        // ImGui has no flex-wrap, so a fixed-width row that no longer fits a
+        // narrow window doesn't reflow on its own - the "Two-cast Thunder &
+        // Blizzard" label (by far the widest thing on this row) would keep
+        // its natural width and eat into where the right-aligned History/
+        // Reset SameLine target lands, visually overlapping it. And unlike
+        // CSS, overlap here isn't just cosmetic: Dear ImGui resolves a
+        // contested screen position to whichever item was SUBMITTED FIRST
+        // that frame (ItemHoverable refuses to hand HoveredId to a later
+        // item unless the earlier one called SetItemAllowOverlap) - so
+        // without a fix, the checkbox (drawn first) would keep eating clicks
+        // meant for History/Reset (drawn after). Dropping Two-cast to its
+        // own row below removes the overlap outright once it doesn't fit;
+        // SetItemAllowOverlap on both checkboxes is a belt-and-suspenders
+        // second layer, so contested clicks fall through to History/Reset
+        // even if some future addition to this row reintroduces an overlap.
+        var resetLabel = "Reset";
+        var resetW = ImGui.CalcTextSize(resetLabel).X + ImGui.GetStyle().FramePadding.X * 2;
+        var historyLabel = $"History ({s.PullHistory.Count})";
+        var historyW = ImGui.CalcTextSize(historyLabel).X + ImGui.GetStyle().FramePadding.X * 2;
+        var gap = ImGui.GetStyle().ItemSpacing.X;
+
+        const string enforceLabel = "Enforce order";
+        const string twoCastLabel = "Two-cast Thunder & Blizzard";
+        float CheckboxWidth(string label) =>
+            ImGui.GetFrameHeight() + ImGui.GetStyle().ItemInnerSpacing.X + ImGui.CalcTextSize(label).X;
+        var oneRowW = CheckboxWidth(enforceLabel) + gap + CheckboxWidth(twoCastLabel) + gap + historyW + gap + resetW;
+        var wrapTwoCast = oneRowW > ImGui.GetContentRegionAvail().X;
+
+        void DrawTwoCastCheckbox()
+        {
+            var twoCast = s.TwoCastThunderBlizzard;
+            if (ImGui.Checkbox(twoCastLabel, ref twoCast))
+            {
+                s.TwoCastThunderBlizzard = twoCast;
+                _session.PushState();
+            }
+            if (TooltipsEnabled())
+                ImGui.SetTooltip("On: Thunder and Blizzard are each cast twice per phase - call " +
+                    "the real result from how the two casts combine. Off (default): a single Real/Fake call each.");
+            ImGui.SetItemAllowOverlap();
+        }
+
         var enforceOrder = s.EnforceOrder;
         ImGui.BeginDisabled(_config.DisablePartySync);
-        if (ImGui.Checkbox("Enforce order", ref enforceOrder))
+        if (ImGui.Checkbox(enforceLabel, ref enforceOrder))
         {
             s.EnforceOrder = enforceOrder;
             _session.PushState();
         }
+        ImGui.SetItemAllowOverlap();
 
         // A standing room-wide mechanic setting (see
         // MechState.TwoCastThunderBlizzard), same as Enforce order right
@@ -347,16 +457,11 @@ public sealed class KefkaSaysWindow : Window
         // here rather than in the plugin-wide ConfigWindow (Settings), and
         // gated by the same DisablePartySync guard as Enforce order since
         // it's a synced field too.
-        ImGui.SameLine();
-        var twoCast = s.TwoCastThunderBlizzard;
-        if (ImGui.Checkbox("Two-cast Thunder & Blizzard", ref twoCast))
+        if (!wrapTwoCast)
         {
-            s.TwoCastThunderBlizzard = twoCast;
-            _session.PushState();
+            ImGui.SameLine();
+            DrawTwoCastCheckbox();
         }
-        if (TooltipsEnabled())
-            ImGui.SetTooltip("On: Thunder and Blizzard are each cast twice per phase - call " +
-                "the real result from how the two casts combine. Off (default): a single Real/Fake call each.");
         ImGui.EndDisabled();
 
         // .btn-reset sits top-right of .page-header in the webapp; right-align
@@ -364,12 +469,6 @@ public sealed class KefkaSaysWindow : Window
         // this row's natural flow. Settings lives in the title bar instead
         // (see the constructor's TitleBarButtons setup) since it's a
         // window-chrome-level action, not a session control.
-        var resetLabel = "Reset";
-        var resetW = ImGui.CalcTextSize(resetLabel).X + ImGui.GetStyle().FramePadding.X * 2;
-        var historyLabel = $"History ({s.PullHistory.Count})";
-        var historyW = ImGui.CalcTextSize(historyLabel).X + ImGui.GetStyle().FramePadding.X * 2;
-        var gap = ImGui.GetStyle().ItemSpacing.X;
-
         ImGui.SameLine(ImGui.GetContentRegionAvail().X - historyW - gap - resetW + ImGui.GetCursorPosX());
         ImGui.BeginDisabled(s.PullHistory.Count == 0);
         if (ImGui.Button(historyLabel) && HistoryWindow is { } hw) hw.IsOpen = !hw.IsOpen;
@@ -379,6 +478,14 @@ public sealed class KefkaSaysWindow : Window
         ImGui.PushStyleColor(ImGuiCol.Text, Theme.Fake);
         var reset = ImGui.Button(resetLabel);
         ImGui.PopStyleColor();
+
+        if (wrapTwoCast)
+        {
+            ImGui.BeginDisabled(_config.DisablePartySync);
+            DrawTwoCastCheckbox();
+            ImGui.EndDisabled();
+        }
+
         if (reset)
         {
             // Reset needs two things a plain PushState() call wouldn't carry
@@ -878,13 +985,29 @@ public sealed class KefkaSaysWindow : Window
         // spacing out first, so StatusCardGap is the WHOLE gap between boxes.
         SetExactGap(StatusCardGap + extraStretch);
 
+        // Results-only mode has no input-column buttons to show that a cast
+        // has already been called (via "element real/fake") while its shape
+        // ("element inferno/tsunami") hasn't landed yet - both FloorRows
+        // below stay blank until It1Type resolves, since neither can be
+        // attributed to a shape yet. The header badge fills that gap; the
+        // normal two-column mode already shows the same in-between state via
+        // DrawFloorAoeSection's own Cast row highlighting, so it's gated to
+        // ResultsOnly to avoid disturbing that mode's carefully
+        // height-matched status column (see StatusColumnStretch's comment).
+        // Prefers It1Rf when both slots somehow got a call before either
+        // shape did (only reachable via explicit element1/element2) - one
+        // badge can't represent two different values, and slot 1 is the one
+        // that resolves the shape once "element inferno/tsunami" lands.
+        var queuedRf = s.It1Type != FloorType.None ? RF.None : s.It1Rf != RF.None ? s.It1Rf : s.It2Rf;
+        Action? floorHeaderExtra = _config.ResultsOnly && queuedRf != RF.None ? () => QueuedBadge(queuedRf) : null;
+
         GroupCard("Floor AOE", () =>
         {
             var infernoRf = s.It1Type == FloorType.Inferno ? s.It1Rf : s.It2Type == FloorType.Inferno ? s.It2Rf : RF.None;
             FloorRow("Inferno", FloorType.Inferno, infernoRf, AccentTag.Inferno);
             var tsunamiRf = s.It1Type == FloorType.Tsunami ? s.It1Rf : s.It2Type == FloorType.Tsunami ? s.It2Rf : RF.None;
             FloorRow("Tsunami", FloorType.Tsunami, tsunamiRf, AccentTag.Tsunami);
-        });
+        }, floorHeaderExtra);
 
         SetExactGap(StatusCardGap + extraStretch);
 
@@ -939,6 +1062,27 @@ public sealed class KefkaSaysWindow : Window
 
     private static string RfWord(RF v) => v switch { RF.Real => "Real", RF.Fake => "Fake", _ => "--" };
 
+    // Header-row badge for GroupCard (see DrawStatusColumn's Floor AOE call):
+    // Check/Cross rather than a Unicode checkmark/cross character - these are
+    // the same hand-drawn icons CastRow's Real/Fake buttons use elsewhere
+    // (IconAccentButton), and this font's glyph coverage for those symbols
+    // isn't guaranteed. Sized/colored to sit inline with SectionLabel's own
+    // 11px uppercase text (see GroupCard's SameLine call site).
+    private void QueuedBadge(RF rf)
+    {
+        Icon icon = rf == RF.Real ? Icons.Check : Icons.Cross;
+        var color = Theme.CardColor(rf == RF.Real ? AccentTag.Real : AccentTag.Fake);
+        var size = Sc(12f);
+        var textH = ImGui.GetTextLineHeight() * LabelScale;
+
+        var pos = ImGui.GetCursorScreenPos();
+        icon(ImGui.GetWindowDrawList(), new Vector2(pos.X, pos.Y + (textH - size) / 2f), size, Theme.U32(color));
+        ImGui.Dummy(new Vector2(size, textH));
+
+        ImGui.SameLine(0, Sc(4f));
+        ScaledText("QUEUED", LabelScale, color);
+    }
+
     // A bordered .scard box (bg #0f0f24 + border, rounded) drawn around a
     // section label and its rows. Height is unknown until the rows are laid
     // out, so the content is drawn into draw-list channel 1 first, then the
@@ -955,7 +1099,7 @@ public sealed class KefkaSaysWindow : Window
         ImGui.SetCursorScreenPos(new Vector2(cur.X, cur.Y - autoSpacing + Sc(gap)));
     }
 
-    private void GroupCard(string label, Action drawRows)
+    private void GroupCard(string label, Action drawRows, Action? headerExtra = null)
     {
         var padTop = Sc(8f);
         var padBot = Sc(8f);
@@ -983,6 +1127,11 @@ public sealed class KefkaSaysWindow : Window
             ImGui.TableNextRow();
             ImGui.TableNextColumn();
             SectionLabel(label);
+            if (headerExtra is not null)
+            {
+                ImGui.SameLine(0, Sc(8f));
+                headerExtra();
+            }
             ImGui.Spacing();
             drawRows();
             ImGui.EndTable();
