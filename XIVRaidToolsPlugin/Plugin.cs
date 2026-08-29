@@ -12,6 +12,13 @@ public sealed class Plugin : IDalamudPlugin
 {
     private const string CommandName = "/xrt";
 
+    // The full per-command syntax used to live inline in HelpMessage/
+    // HelpText below, but that grew into a wall of text as more mechanics
+    // were added, and only gets longer from here - a link to the README's
+    // Commands section scales a lot better than re-deriving the whole list
+    // in-game every time it's needed.
+    private const string DocsUrl = "https://github.com/RoarkGit/XIV-Raid-Tools/blob/main/XIVRaidToolsPlugin/README.md#commands";
+
     [PluginService] internal static IDalamudPluginInterface PluginInterface { get; private set; } = null!;
     [PluginService] internal static ICommandManager CommandManager { get; private set; } = null!;
     [PluginService] internal static IPluginLog Log { get; private set; } = null!;
@@ -44,22 +51,9 @@ public sealed class Plugin : IDalamudPlugin
 
         CommandManager.AddHandler(CommandName, new CommandInfo(OnCommand)
         {
-            HelpMessage = "Open XIV Raid Tools, or fire a call as if its button were clicked.\n"
-                + "  /xrt kefka\n"
-                + "    gco [real|fake|water|lightning|bomb]\n"
-                + "    gco1|gco2 [real|fake|water|lightning|bomb]\n"
-                + "    <tsunami|inferno> [real|fake]\n"
-                + "    <thunder|blizzard> [real|fake]\n"
-                + "    <thunder1|thunder2|blizzard1|blizzard2> [real|fake]\n"
-                + "    real|fake\n"
-                + "    reset\n"
-                + "  /xrt config\n"
-                + "Bare gco/tsunami/inferno/thunder/blizzard commands assume order of occurrence (first call sets slot 1, second sets slot 2); gco1/gco2 (etc.) target one explicitly instead. "
-                + "Leaving off gco/tsunami/inferno/thunder/blizzard's own real|fake argument queues that call to fire as soon as a separate real/fake command lands (or resolves immediately if one's already queued) - "
-                + "so e.g. \"gco\" then \"fake\", or \"fake\" then \"gco\", both call gco fake; this only ever affects a mechanic call left bare, an explicit \"gco real\" still fires immediately as always. "
-                + "Bare thunder/blizzard always target the 1st cast unless \"Two-cast Thunder & Blizzard\" is enabled in the window, in which case they auto-pick 1st then 2nd the same way gco does; "
-                + "thunder1/thunder2/blizzard1/blizzard2 always target that exact cast regardless of the toggle. "
-                + "With the toggle on, each element's real/fake call is whichever way its two casts combine (both the same -> Real, different -> Fake), not either cast's raw value.",
+            HelpMessage = "Open XIV Raid Tools (/xrt kefka), open settings (/xrt config), "
+                + "or fire a mechanic call from a macro/hotkey (e.g. \"/xrt kefka gco real\"). "
+                + $"Full command reference: {DocsUrl}",
         });
 
         PluginInterface.UiBuilder.Draw += _windowSystem.Draw;
@@ -226,9 +220,8 @@ public sealed class Plugin : IDalamudPlugin
         _kefkaWindow.IsOpen = true;
     }
 
-    private const string HelpText = "Usage: /xrt kefka gco[1|2] [real|fake|water|lightning|bomb], "
-        + "/xrt kefka <tsunami|inferno> [real|fake], "
-        + "/xrt kefka <thunder|blizzard>[1|2] [real|fake], /xrt kefka real|fake, /xrt kefka reset";
+    private const string HelpText = $"Valid subcommands: gco[1|2], tsunami, inferno, thunder[1|2], blizzard[1|2], real, fake, reset. "
+        + $"Full command reference: {DocsUrl}";
 
     private static RF ParseRf(string arg) => arg == "real" ? RF.Real : RF.Fake;
 
