@@ -18,7 +18,9 @@ jobs:
   release:
     runs-on: windows-latest
     permissions:
-      contents: write # create the GitHub Release, commit pluginmaster.json back to main
+      contents: write # create the GitHub Release. pluginmaster.json now lives in a separate
+                       # repo (RoarkGit/DalamudPlugins, shared with XIVMit) - see the last step -
+                       # so this token's write access to THIS repo has nothing to do with that.
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -59,15 +61,16 @@ jobs:
           files: XIVRaidToolsPlugin/bin/Release/XIVRaidToolsPlugin/latest.zip
           fail_on_unmatched_files: true
 
-      # The tag checkout above leaves the workspace in a detached HEAD, so
-      # committing pluginmaster.json needs its own explicit switch to main
-      # rather than pushing from wherever the tag happens to point.
-      - name: Update pluginmaster.json on main
+      # pluginmaster.json lives in RoarkGit/DalamudPlugins, shared with XIVMit's own release
+      # workflow - each plugin updates only its own entry there. GITHUB_TOKEN only grants write
+      # access to THIS repo, so the push needs a PAT scoped to the shared repo instead (fine-
+      # grained, contents: read/write, repo: DalamudPlugins only), stored as this repo's
+      # PLUGINMASTER_REPO_TOKEN secret.
+      - name: Update pluginmaster.json in DalamudPlugins
         shell: bash
+        env:
+          PLUGINMASTER_REPO_TOKEN: ${{ secrets.PLUGINMASTER_REPO_TOKEN }}
         run: |
-          git fetch origin main
-          git checkout -B main origin/main
-
           # Read AssemblyVersion back from the manifest DalamudPackager just
           # generated, rather than re-deriving it from the tag string. A
           # 3-part tag like "0.1.0" builds fine but MSBuild/the packager
@@ -77,13 +80,18 @@ jobs:
           # match what's really in the zip, not what the tag literally said.
           built_version=$(python3 -c "import json; print(json.load(open('XIVRaidToolsPlugin/bin/Release/XIVRaidToolsPlugin/XIVRaidToolsPlugin.json'))['AssemblyVersion'])")
 
+          git clone "https://x-access-token:${PLUGINMASTER_REPO_TOKEN}@github.com/RoarkGit/DalamudPlugins.git" "$RUNNER_TEMP/dalamud-plugins"
+          cd "$RUNNER_TEMP/dalamud-plugins"
+
           python3 - <<EOF
           import json, time
 
           with open("pluginmaster.json") as f:
               data = json.load(f)
 
-          entry = data[0]
+          # By InternalName, not data[0] - the shared file holds more than one plugin's entry
+          # now, and this workflow must only ever touch its own.
+          entry = next(e for e in data if e["InternalName"] == "XIVRaidToolsPlugin")
           entry["AssemblyVersion"] = "$built_version"
           entry["LastUpdate"] = int(time.time())
           url = "https://github.com/${{ github.repository }}/releases/download/${{ steps.ver.outputs.tag }}/latest.zip"
@@ -98,5 +106,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add pluginmaster.json
-          git commit -m "Update pluginmaster.json for ${{ steps.ver.outputs.tag }}"
+          git commit -m "Update XIVRaidToolsPlugin entry for ${{ steps.ver.outputs.tag }}"
           git push origin main
